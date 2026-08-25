@@ -1,0 +1,28 @@
+name: slotlyflow
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${SLOTLYFLOW_POSTGRES_DB:?SLOTLYFLOW_POSTGRES_DB must be supplied}
+      POSTGRES_USER: ${SLOTLYFLOW_POSTGRES_USER:?SLOTLYFLOW_POSTGRES_USER must be supplied}
+      POSTGRES_PASSWORD: ${SLOTLYFLOW_POSTGRES_PASSWORD:?SLOTLYFLOW_POSTGRES_PASSWORD must be supplied}
+    ports:
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - slotlyflow-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  mailpit:
+    image: axllent/mailpit:v1.31.0
+    ports:
+      - '127.0.0.1:1025:1025'
+      - '127.0.0.1:8025:8025'
+
+volumes:
+  slotlyflow-postgres-data:

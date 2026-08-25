@@ -1,0 +1,31 @@
+{
+  "name": "@slotlyflow/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint src test drizzle.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests --exclude test/integration/**",
+    "test:integration": "node --env-file-if-exists=../../.env.local --import tsx test/integration/require-database-url.ts && node --env-file-if-exists=../../.env.local node_modules/vitest/vitest.mjs run --config vitest.config.ts test/integration",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "db:migrate": "pnpm build && node --env-file-if-exists=../../.env.local --import tsx src/migrations/migrate.ts"
+  },
+  "dependencies": {
+    "@slotlyflow/config": "workspace:*",
+    "drizzle-orm": "1.0.0-rc.4",
+    "postgres": "^3.4.7"
+  },
+  "devDependencies": {
+    "drizzle-kit": "1.0.0-rc.4",
+    "tsx": "^4.23.12",
+    "vitest": "^3.1.3"
+  }
+}

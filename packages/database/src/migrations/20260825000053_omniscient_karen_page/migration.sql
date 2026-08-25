@@ -1,0 +1,1 @@
+ALTER TABLE "oauth_authorization_states" ADD COLUMN "code_verifier_hash" varchar(255) NOT NULL;
