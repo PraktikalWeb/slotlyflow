@@ -85,5 +85,20 @@ describe('health endpoints', () => {
 
     expect(response.headers['access-control-allow-origin']).toBe('https://web.example.test');
     expect(response.headers['access-control-allow-credentials']).toBe('true');
+
+    const profileUpdatePreflight = await application.getHttpAdapter().getInstance().inject({
+      method: 'OPTIONS',
+      url: '/auth/me',
+      headers: {
+        origin: 'https://web.example.test',
+        'access-control-request-method': 'PATCH',
+        'access-control-request-headers': 'content-type,x-csrf-token',
+      },
+    });
+
+    expect(profileUpdatePreflight.statusCode).toBe(204);
+    expect(profileUpdatePreflight.headers['access-control-allow-origin']).toBe('https://web.example.test');
+    expect(profileUpdatePreflight.headers['access-control-allow-credentials']).toBe('true');
+    expect(profileUpdatePreflight.headers['access-control-allow-methods']).toContain('PATCH');
   });
 });

@@ -27,6 +27,8 @@ export const organizationMembers = pgTable(
   },
   (table) => [
     uniqueIndex('organization_members_organization_user_unique').on(table.organizationId, table.userId),
+    uniqueIndex('organization_members_organization_id_id_unique').on(table.organizationId, table.id),
+    uniqueIndex('organization_members_organization_id_id_user_id_unique').on(table.organizationId, table.id, table.userId),
     index('organization_members_organization_id_idx').on(table.organizationId),
     index('organization_members_user_id_idx').on(table.userId),
   ],

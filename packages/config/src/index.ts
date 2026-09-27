@@ -52,6 +52,21 @@ export interface GoogleOidcConfig {
   readonly webAppUrl: string;
 }
 
+/**
+ * Server-owned configuration for Meta WhatsApp Embedded Signup. The app
+ * secret is intentionally never part of the browser-facing configuration.
+ */
+export interface MetaWhatsAppConfig {
+  readonly appId: string;
+  readonly appSecret: string;
+  readonly embeddedSignupConfigurationId: string;
+  readonly graphApiVersion: string;
+  /** Server-only shared value used only to answer Meta's webhook challenge. */
+  readonly webhookVerifyToken: string;
+  /** Server-only 256-bit key for authenticated credential encryption. */
+  readonly credentialEncryptionKey: Uint8Array;
+}
+
 const runtimeEnvironments = new Set<RuntimeEnvironment>(['development', 'test', 'production']);
 const maximumRequestBodyBytes = 1_048_576;
 
@@ -196,6 +211,48 @@ export function loadAuthenticationConfig(environment: NodeJS.ProcessEnv = proces
     argon2: { memoryCost: 19_456, timeCost: 2, parallelism: 1 },
     email: loadEmailDeliveryConfig(environment, production, webAppUrl),
     ...(googleOidc === undefined ? {} : { googleOidc }),
+  };
+}
+
+/**
+ * Meta Embedded Signup is optional until an Organization starts onboarding,
+ * but a partially configured provider is unsafe and fails at startup.
+ */
+export function loadMetaWhatsAppConfig(environment: NodeJS.ProcessEnv = process.env): MetaWhatsAppConfig | undefined {
+  const appId = readOptional(environment, 'META_APP_ID');
+  const appSecret = readOptional(environment, 'META_APP_SECRET');
+  const embeddedSignupConfigurationId = readOptional(environment, 'META_EMBEDDED_SIGNUP_CONFIG_ID');
+  const graphApiVersion = readOptional(environment, 'META_GRAPH_API_VERSION');
+  const webhookVerifyToken = readOptional(environment, 'META_WHATSAPP_WEBHOOK_VERIFY_TOKEN');
+  const credentialEncryptionKey = readOptional(environment, 'PROVIDER_CREDENTIAL_ENCRYPTION_KEY');
+  const values = [appId, appSecret, embeddedSignupConfigurationId, graphApiVersion, webhookVerifyToken, credentialEncryptionKey];
+
+  if (values.every((value) => value === undefined)) return undefined;
+  if (values.some((value) => value === undefined)) {
+    throw new Error('META_APP_ID, META_APP_SECRET, META_EMBEDDED_SIGNUP_CONFIG_ID, META_GRAPH_API_VERSION, META_WHATSAPP_WEBHOOK_VERIFY_TOKEN, and PROVIDER_CREDENTIAL_ENCRYPTION_KEY must be configured together.');
+  }
+  if (!/^\d{1,32}$/.test(appId as string)) throw new Error('META_APP_ID must be a numeric Meta application identifier.');
+  if (!/^\d{1,32}$/.test(embeddedSignupConfigurationId as string)) {
+    throw new Error('META_EMBEDDED_SIGNUP_CONFIG_ID must be a numeric Embedded Signup configuration identifier.');
+  }
+  if (!/^v\d+\.\d+$/.test(graphApiVersion as string)) {
+    throw new Error('META_GRAPH_API_VERSION must use the vNN.NN format.');
+  }
+  if (!/^[\x21-\x7e]{16,512}$/.test(webhookVerifyToken as string)) {
+    throw new Error('META_WHATSAPP_WEBHOOK_VERIFY_TOKEN must be a 16-512 character printable server-only verification value.');
+  }
+  const decodedEncryptionKey = Buffer.from(credentialEncryptionKey as string, 'base64url');
+  if (decodedEncryptionKey.length !== 32) {
+    throw new Error('PROVIDER_CREDENTIAL_ENCRYPTION_KEY must be a base64url-encoded 256-bit key.');
+  }
+
+  return {
+    appId: appId as string,
+    appSecret: appSecret as string,
+    embeddedSignupConfigurationId: embeddedSignupConfigurationId as string,
+    graphApiVersion: graphApiVersion as string,
+    webhookVerifyToken: webhookVerifyToken as string,
+    credentialEncryptionKey: decodedEncryptionKey,
   };
 }
 

@@ -1,0 +1,271 @@
+:root {
+  color-scheme: light;
+
+  /* Primitive colour values. Brand artwork may consume these directly. */
+  --primitive-brand-green-950: #002d22;
+  --primitive-brand-green-900: #003b2d;
+  --primitive-brand-green-800: #07513f;
+  --primitive-brand-lime-500: #a7e23b;
+  --primitive-brand-lime-300: #c7f86e;
+  --primitive-brand-lime-400: #b7f34a;
+  --primitive-brand-aqua-400: #3ce6d0;
+  --primitive-brand-violet-400: #8b7cf6;
+  --primitive-brand-coral-400: #ff7a66;
+  --primitive-neutral-0: #ffffff;
+  --primitive-neutral-50: #f7f9f8;
+  --primitive-neutral-100: #f1f5f3;
+  --primitive-neutral-200: #e9efec;
+  --primitive-neutral-300: #e1e8e4;
+  --primitive-neutral-400: #c9d4cf;
+  --primitive-neutral-600: #8b9692;
+  --primitive-neutral-700: #66736f;
+  --primitive-neutral-950: #111816;
+  --primitive-danger-500: #c9362b;
+  --primitive-danger-200: #ffb4aa;
+  --primitive-danger-50: #fceceb;
+  --primitive-warning-500: #a45b09;
+  --primitive-warning-50: #fff8ed;
+  --primitive-success-500: #087a5b;
+  --primitive-success-50: #f1fad9;
+  --primitive-info-500: #147b8f;
+  --primitive-info-50: #eaf5f7;
+
+  /* Stable aliases retained for approved SlotlyFlow artwork. */
+  --brand-green: var(--primitive-brand-green-900);
+  --flow-lime: var(--primitive-brand-lime-400);
+  --flow-aqua: var(--primitive-brand-aqua-400);
+  --flow-violet: var(--primitive-brand-violet-400);
+  --flow-coral: var(--primitive-brand-coral-400);
+
+  /* Typography foundations. */
+  --font-family-sans: 'Spline Sans Variable', 'Spline Sans', 'Segoe UI', Arial, sans-serif;
+  --font-family-mono: 'IBM Plex Mono', 'Cascadia Mono', Consolas, monospace;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-base: 0.875rem;
+  --font-size-md: 0.9375rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.375rem;
+  --font-size-2xl: 1.75rem;
+  --font-size-3xl: 2.25rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.08;
+  --line-height-heading: 1.2;
+  --line-height-body: 1.5;
+  --line-height-relaxed: 1.65;
+  --letter-spacing-tightest: -0.045em;
+  --letter-spacing-tighter: -0.04em;
+  --letter-spacing-tight: -0.035em;
+  --letter-spacing-link: 0.025em;
+  --letter-spacing-caps: 0.08em;
+
+  /* Four-pixel spacing scale. */
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-22: 5.5rem;
+  --space-26: 6.5rem;
+
+  /* Shape and border scales. */
+  --border-width-default: 1px;
+  --border-width-strong: 2px;
+  --border-width-accent: 3px;
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.4375rem;
+  --radius-control: 0.5rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-full: 999px;
+  --radius-pill: var(--radius-full);
+
+  /* Control and icon sizing. */
+  --control-height-small: 2rem;
+  --control-height-medium: 2.375rem;
+  --control-height-large: 2.75rem;
+  --control-touch-target: 2.75rem;
+  --control-padding-inline-small: var(--space-3);
+  --control-padding-inline-medium: 0.875rem;
+  --control-padding-inline-large: var(--space-4);
+  --icon-size-small: 1rem;
+  --icon-size-medium: 1.25rem;
+  --icon-size-large: 1.5rem;
+
+  /* Motion, opacity, elevation, and layers. */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 260ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --opacity-disabled: 0.65;
+  --opacity-muted: 0.72;
+  --opacity-subtle: 0.26;
+  --shadow-none: none;
+  --shadow-sm: 0 1px 2px rgb(17 24 22 / 5%);
+  --shadow-md: 0 1px 2px rgb(17 24 22 / 5%), 0 8px 24px rgb(17 24 22 / 8%);
+  --shadow-lg: 0 2px 4px rgb(17 24 22 / 6%), 0 16px 40px rgb(17 24 22 / 12%);
+  --layer-base: 0;
+  --layer-sticky: 100;
+  --layer-dropdown: 200;
+  --layer-overlay: 300;
+  --layer-modal: 400;
+  --layer-toast: 500;
+
+  /* Reusable layout values. */
+  --layout-content-max: 90rem;
+  --layout-content-readable: 45rem;
+  --layout-content-narrow: 25.5rem;
+  --layout-sidebar-width: 16.5rem;
+  --layout-page-gutter: clamp(var(--space-4), 5vw, var(--space-6));
+  --layout-section-gap: var(--space-8);
+  --layout-content-stack-gap: var(--space-6);
+  --layout-form-field-gap: var(--space-2);
+  --layout-form-stack-gap: var(--space-6);
+  --layout-auth-content-gap: var(--space-8);
+
+  /* Component defaults; contextual surfaces may override these aliases. */
+  --form-label-color: var(--color-text-primary);
+  --form-help-color: var(--color-text-secondary);
+  --form-error-color: var(--color-error);
+  --form-link-color: var(--color-link);
+}
+
+:root,
+[data-theme='light'] {
+  /* Light theme semantic contract. Future themes override only this layer. */
+  --color-bg-page: var(--primitive-neutral-50);
+  --color-bg-surface: var(--primitive-neutral-0);
+  --color-bg-surface-subtle: var(--primitive-neutral-100);
+  --color-bg-surface-strong: var(--primitive-neutral-200);
+  --color-bg-inverse: var(--primitive-brand-green-900);
+  --color-text-primary: var(--primitive-neutral-950);
+  --color-text-secondary: var(--primitive-neutral-700);
+  --color-text-muted: var(--primitive-neutral-600);
+  --color-text-inverse: var(--primitive-neutral-0);
+  --color-text-inverse-secondary: rgb(255 255 255 / 82%);
+  --color-text-inverse-muted: rgb(255 255 255 / 72%);
+  --color-border-default: var(--primitive-neutral-300);
+  --color-border-strong: var(--primitive-neutral-400);
+  --color-border-inverse: rgb(255 255 255 / 26%);
+  --color-border-focus: var(--primitive-brand-green-900);
+  --color-action-primary: var(--primitive-brand-green-900);
+  --color-action-primary-hover: var(--primitive-brand-green-800);
+  --color-action-primary-active: var(--primitive-brand-green-950);
+  --color-action-primary-text: var(--primitive-neutral-0);
+  --color-action-accent: var(--primitive-brand-lime-400);
+  --color-action-accent-hover: var(--primitive-brand-lime-300);
+  --color-action-accent-active: var(--primitive-brand-lime-500);
+  --color-action-accent-text: var(--primitive-neutral-950);
+  --color-action-secondary: var(--primitive-neutral-0);
+  --color-action-secondary-hover: var(--primitive-neutral-100);
+  --color-action-secondary-active: var(--primitive-neutral-200);
+  --color-action-secondary-text: var(--primitive-neutral-950);
+  --color-action-ghost-hover: var(--primitive-neutral-100);
+  --color-link: var(--primitive-brand-green-900);
+  --color-link-inverse: var(--primitive-brand-lime-400);
+  --color-success: var(--primitive-success-500);
+  --color-warning: var(--primitive-warning-500);
+  --color-error: var(--primitive-danger-500);
+  --color-error-inverse: var(--primitive-danger-200);
+  --color-info: var(--primitive-info-500);
+  --color-focus-ring: rgb(0 59 45 / 20%);
+  --color-focus-ring-accent: rgb(183 243 74 / 78%);
+  --color-feedback-warning-bg: var(--primitive-warning-50);
+  --color-feedback-success-bg: var(--primitive-success-50);
+  --color-feedback-error-bg: var(--primitive-danger-50);
+  --color-feedback-info-bg: var(--primitive-info-50);
+  --color-selection-bg: var(--primitive-brand-lime-400);
+  --color-selection-text: var(--primitive-neutral-950);
+
+  /* Compatibility aliases for existing non-component page styles. */
+  --canvas: var(--color-bg-page);
+  --surface: var(--color-bg-surface);
+  --surface-subtle: var(--color-bg-surface-subtle);
+  --surface-strong: var(--color-bg-surface-strong);
+  --ink: var(--color-text-primary);
+  --ink-secondary: var(--color-text-secondary);
+  --ink-tertiary: var(--color-text-muted);
+  --border: var(--color-border-default);
+  --border-strong: var(--color-border-strong);
+  --danger: var(--color-error);
+  --warning: var(--color-warning);
+  --success: var(--color-success);
+  --info: var(--color-info);
+  --text-xs: var(--font-size-xs);
+  --text-sm: var(--font-size-sm);
+  --text-base: var(--font-size-base);
+  --text-md: var(--font-size-md);
+  --text-lg: var(--font-size-lg);
+  --text-xl: var(--font-size-xl);
+  --text-2xl: var(--font-size-2xl);
+  --text-3xl: var(--font-size-3xl);
+  --motion-fast: var(--duration-fast);
+  --motion-standard: var(--duration-normal);
+  --motion-slow: var(--duration-slow);
+}
+
+/* Tailwind v4 aliases semantic tokens; it never owns a second raw-value palette. */
+@theme inline {
+  --font-sans: var(--font-family-sans);
+  --font-mono: var(--font-family-mono);
+  --color-page: var(--color-bg-page);
+  --color-surface: var(--color-bg-surface);
+  --color-surface-subtle: var(--color-bg-surface-subtle);
+  --color-surface-strong: var(--color-bg-surface-strong);
+  --color-inverse: var(--color-bg-inverse);
+  --color-ui-text-primary: var(--color-text-primary);
+  --color-ui-text-secondary: var(--color-text-secondary);
+  --color-ui-text-muted: var(--color-text-muted);
+  --color-ui-text-inverse: var(--color-text-inverse);
+  --color-ui-border-default: var(--color-border-default);
+  --color-ui-border-strong: var(--color-border-strong);
+  --color-ui-action-primary: var(--color-action-primary);
+  --color-ui-action-accent: var(--color-action-accent);
+  --color-ui-success: var(--color-success);
+  --color-ui-warning: var(--color-warning);
+  --color-ui-error: var(--color-error);
+  --color-ui-info: var(--color-info);
+  --text-ui-xs: var(--font-size-xs);
+  --text-ui-sm: var(--font-size-sm);
+  --text-ui-base: var(--font-size-base);
+  --text-ui-md: var(--font-size-md);
+  --text-ui-lg: var(--font-size-lg);
+  --text-ui-xl: var(--font-size-xl);
+  --text-ui-2xl: var(--font-size-2xl);
+  --text-ui-3xl: var(--font-size-3xl);
+  --spacing-page-gutter: var(--layout-page-gutter);
+  --spacing-section: var(--layout-section-gap);
+  --spacing-field: var(--layout-form-field-gap);
+  --spacing-form: var(--layout-form-stack-gap);
+  --spacing-auth-content: var(--layout-auth-content-gap);
+  --radius-ui-xs: var(--radius-xs);
+  --radius-ui-sm: var(--radius-sm);
+  --radius-ui-control: var(--radius-control);
+  --radius-ui-md: var(--radius-md);
+  --radius-ui-lg: var(--radius-lg);
+  --radius-ui-full: var(--radius-full);
+  --shadow-ui-sm: var(--shadow-sm);
+  --shadow-ui-md: var(--shadow-md);
+  --shadow-ui-lg: var(--shadow-lg);
+  --ease-ui-standard: var(--ease-standard);
+  --breakpoint-sm: 40rem;
+  --breakpoint-auth: 43.75rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-auth-tablet: 56.25rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+  --breakpoint-2xl: 96rem;
+}

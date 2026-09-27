@@ -8,7 +8,9 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src test",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "node ../../scripts/run-test-environment.mjs pnpm exec vitest run",
+    "platform-admin:grant": "node --env-file-if-exists=../../.env.local --import tsx src/platform-admin/cli/grant-platform-admin.ts",
+    "bot:provision-handover-test": "node --env-file-if-exists=../../.env.local --import tsx src/bots/cli/provision-handover-test.ts"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.2",

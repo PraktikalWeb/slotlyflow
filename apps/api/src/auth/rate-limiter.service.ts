@@ -1,6 +1,6 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 
-export type AuthRateLimitPolicy = 'register' | 'login' | 'forgotPassword' | 'resetPassword' | 'verifyEmail' | 'resendVerification' | 'googleInitiate' | 'googleCallback';
+export type AuthRateLimitPolicy = 'register' | 'login' | 'forgotPassword' | 'resetPassword' | 'verifyEmail' | 'resendVerification' | 'profileUpdate' | 'changePassword' | 'googleInitiate' | 'googleCallback';
 
 const policies: Record<AuthRateLimitPolicy, { limit: number; windowMs: number }> = {
   register: { limit: 5, windowMs: 60_000 },
@@ -9,6 +9,8 @@ const policies: Record<AuthRateLimitPolicy, { limit: number; windowMs: number }>
   resetPassword: { limit: 5, windowMs: 60_000 },
   verifyEmail: { limit: 10, windowMs: 60_000 },
   resendVerification: { limit: 5, windowMs: 60_000 },
+  profileUpdate: { limit: 20, windowMs: 60_000 },
+  changePassword: { limit: 5, windowMs: 60_000 },
   googleInitiate: { limit: 10, windowMs: 60_000 },
   googleCallback: { limit: 10, windowMs: 60_000 },
 };

@@ -4,7 +4,11 @@ export function isSafeRequestId(value: unknown): value is string {
   return typeof value === 'string' && requestIdPattern.test(value);
 }
 
-export function publicErrorMessage(statusCode: number): string {
+export function publicErrorMessage(statusCode: number, errorCode?: string): string {
+  if (errorCode === 'DEPENDENCY_UNAVAILABLE') {
+    return 'The request could not be completed.';
+  }
+
   if (statusCode >= 500) {
     return 'An unexpected error occurred.';
   }

@@ -1,3 +1,5 @@
+import type { OidcDiagnosticReporter } from './oidc-diagnostics.js';
+
 /** Normalized boundary between SlotlyFlow authentication and an external OIDC provider. */
 export interface ExternalIdentity {
   readonly provider: 'GOOGLE';
@@ -5,6 +7,9 @@ export interface ExternalIdentity {
   readonly email: string;
   readonly emailVerified: boolean;
   readonly issuer: string;
+  readonly firstName?: string;
+  readonly lastName?: string;
+  /** Legacy adapter field retained for compatibility; canonical persistence uses the split name fields. */
   readonly displayName?: string;
 }
 
@@ -21,5 +26,6 @@ export interface OidcIdentityProvider {
     readonly state: string;
     readonly nonce: string;
     readonly codeVerifier: string;
-  }): Promise<ExternalIdentity>;
+    readonly authorizationResponseIssuer?: string;
+  }, diagnostics?: OidcDiagnosticReporter): Promise<ExternalIdentity>;
 }

@@ -11,10 +11,12 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "test": "turbo test",
+    "test": "node scripts/run-test-environment.mjs turbo test",
     "db:generate": "pnpm --filter @slotlyflow/database db:generate",
     "db:migrate": "pnpm --filter @slotlyflow/database db:migrate",
     "db:test": "pnpm --filter @slotlyflow/database test:integration",
+    "db:test:migrate": "pnpm --filter @slotlyflow/database db:test:migrate",
+    "platform-admin:grant": "pnpm --filter @slotlyflow/api platform-admin:grant",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

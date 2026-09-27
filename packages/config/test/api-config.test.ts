@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { loadApiConfig, loadAuthenticationConfig, loadDatabaseConfig } from '../src/index.js';
+import { loadApiConfig, loadAuthenticationConfig, loadDatabaseConfig, loadMetaWhatsAppConfig } from '../src/index.js';
 
 describe('loadApiConfig', () => {
   it('uses safe local defaults without requiring an environment file', () => {
@@ -80,5 +80,35 @@ describe('loadAuthenticationConfig', () => {
     expect(() => loadAuthenticationConfig({ ...base, SMTP_USER: 'only-a-user' })).toThrow('configured together');
     expect(() => loadAuthenticationConfig({ ...base, EMAIL_FROM_ADDRESS: 'invalid' })).toThrow('EMAIL_FROM_ADDRESS');
     expect(() => loadAuthenticationConfig({ NODE_ENV: 'production' })).toThrow('EMAIL_PROVIDER');
+  });
+});
+
+describe('loadMetaWhatsAppConfig', () => {
+  const configured = {
+    META_APP_ID: '1234567890',
+    META_APP_SECRET: 'server-only-test-secret',
+    META_EMBEDDED_SIGNUP_CONFIG_ID: '9876543210',
+    META_GRAPH_API_VERSION: 'v25.0',
+    META_WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'meta-webhook-verify-token-fixture',
+    PROVIDER_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64url'),
+  };
+
+  it('returns undefined when Meta onboarding is not configured', () => {
+    expect(loadMetaWhatsAppConfig({})).toBeUndefined();
+  });
+
+  it('requires one complete validated Meta configuration contract', () => {
+    expect(loadMetaWhatsAppConfig(configured)).toMatchObject({
+      appId: configured.META_APP_ID,
+      appSecret: configured.META_APP_SECRET,
+      embeddedSignupConfigurationId: configured.META_EMBEDDED_SIGNUP_CONFIG_ID,
+      graphApiVersion: configured.META_GRAPH_API_VERSION,
+      webhookVerifyToken: configured.META_WHATSAPP_WEBHOOK_VERIFY_TOKEN,
+    });
+    expect(loadMetaWhatsAppConfig(configured)?.credentialEncryptionKey).toHaveLength(32);
+    expect(() => loadMetaWhatsAppConfig({ META_APP_ID: configured.META_APP_ID })).toThrow('must be configured together');
+    expect(() => loadMetaWhatsAppConfig({ ...configured, META_GRAPH_API_VERSION: '25.0' })).toThrow('META_GRAPH_API_VERSION');
+    expect(() => loadMetaWhatsAppConfig({ ...configured, META_WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'short' })).toThrow('META_WHATSAPP_WEBHOOK_VERIFY_TOKEN');
+    expect(() => loadMetaWhatsAppConfig({ ...configured, PROVIDER_CREDENTIAL_ENCRYPTION_KEY: 'invalid' })).toThrow('PROVIDER_CREDENTIAL_ENCRYPTION_KEY');
   });
 });

@@ -33,7 +33,7 @@ describe('HTTP exception filter', () => {
 
     expect(response.status).toHaveBeenCalledWith(HttpStatus.SERVICE_UNAVAILABLE);
     expect(response.send).toHaveBeenCalledWith({
-      error: { code: 'DEPENDENCY_UNAVAILABLE', message: 'An unexpected error occurred.' },
+      error: { code: 'DEPENDENCY_UNAVAILABLE', message: 'The request could not be completed.' },
       correlationId: 'request-id',
     });
   });

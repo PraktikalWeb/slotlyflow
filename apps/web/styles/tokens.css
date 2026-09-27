@@ -1,0 +1,52 @@
+:root {
+  /* Core palette */
+  --brand-green: #003B2D;
+  --flow-lime: #B7F34A;
+  --flow-aqua: #3CE6D0;
+  --flow-violet: #8B7CF6;
+  --flow-coral: #FF7A66;
+  
+  --canvas: #F7F9F8;
+  --surface: #FFFFFF;
+  --surface-subtle: #F1F5F3;
+  --surface-strong: #E9EFEC;
+  
+  --ink: #111816;
+  --ink-secondary: #66736F;
+  --ink-tertiary: #8B9692;
+  
+  --border: #E1E8E4;
+  --border-strong: #C9D4CF;
+
+  --danger: #C9362B;
+  --warning: #A45B09;
+  --success: #087A5B;
+  --info: #147B8F;
+  
+  /* Radii */
+  --radius: 12px;
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  
+  /* Icon & Font Sizes */
+  --icon-size-small: 16px;
+  --icon-size-medium: 20px;
+  --icon-size-large: 24px;
+  --font-size-xs: 12px;
+  
+  /* Layout */
+  --sidebar-width-expanded: 244px;
+  --sidebar-width-collapsed: 72px;
+  --mobile-header-height: 60px;
+  --mobile-nav-height: 64px;
+  
+  /* Z-Index */
+  --z-background: 0;
+  --z-content: 1;
+  --z-shell-controls: 10;
+  --z-tooltip: 20;
+  --z-menu: 30;
+}

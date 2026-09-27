@@ -1,0 +1,70 @@
+/* DESKTOP SIDEBAR */
+/* Sidebar has been migrated to pure Tailwind in DesktopSidebar.tsx */
+
+/* PORTAL OVERLAYS */
+.portal-tooltip {
+  position: fixed; z-index: var(--z-tooltip);
+  background: var(--ink); color: white;
+  padding: 6px 12px; border-radius: var(--radius-xs);
+  font-size: 13px; font-weight: 500;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  white-space: nowrap;
+}
+
+.portal-menu {
+  position: fixed; z-index: var(--z-menu);
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px; width: 220px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.portal-menu-item {
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  font-size: 14px; font-weight: 500; cursor: pointer;
+  background: transparent; border: none; text-align: left;
+  display: flex; align-items: center; gap: 8px;
+}
+.portal-menu-item:hover, .portal-menu-item:focus-visible { 
+  background: var(--surface-subtle); 
+  outline: 2px solid var(--brand-green); outline-offset: -2px;
+}
+.portal-menu-item--add-business {
+  color: white; background: var(--flow-coral); margin-top: 4px;
+}
+.portal-menu-item--add-business:hover, .portal-menu-item--add-business:focus-visible { 
+  background: #e6604c; 
+}
+
+
+/* MOBILE NAV */
+.mobile-header {
+  position: fixed; top: 0; left: 0; right: 0; height: var(--mobile-header-height);
+  background: var(--brand-green); color: white;
+  z-index: var(--z-shell-controls);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px;
+}
+@media (min-width: 1024px) {
+  .mobile-header { display: none; }
+}
+
+.mobile-bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0; height: var(--mobile-nav-height);
+  background: var(--brand-green);
+  border-top: 1px solid rgba(255,255,255,0.1);
+  z-index: var(--z-shell-controls);
+  display: flex; align-items: center; justify-content: space-around;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@media (min-width: 1024px) {
+  .mobile-bottom-nav { display: none; }
+}
+
+.mobile-nav-item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  color: rgba(255,255,255,0.6); padding: 8px; flex: 1; text-decoration: none;
+}
+.mobile-nav-item--active { color: var(--flow-lime); }

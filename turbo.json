@@ -20,7 +20,8 @@
     "test": {
       "dependsOn": ["^build"],
       "outputs": [],
-      "env": ["DATABASE_URL"]
+      "env": ["DATABASE_URL"],
+      "cache": false
     }
   }
 }

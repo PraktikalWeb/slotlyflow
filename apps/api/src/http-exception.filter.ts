@@ -38,7 +38,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     response.status(statusCode).send({
       error: {
         code: errorCode,
-        message: publicErrorMessage(statusCode),
+        message: publicErrorMessage(statusCode, errorCode),
       },
       correlationId: request.id,
     });

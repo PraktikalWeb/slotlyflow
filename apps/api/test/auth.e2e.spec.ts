@@ -18,7 +18,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AuthRateLimiter } from '../src/auth/rate-limiter.service.js';
 import { AuthService } from '../src/auth/auth.service.js';
 import type { ExternalIdentity, OidcIdentityProvider } from '../src/auth/oidc/oidc-identity-provider.js';
-import type { EmailProvider, VerificationEmailMessage } from '../src/email/email-provider.js';
+import type { EmailProvider, PasswordResetEmailMessage, VerificationEmailMessage } from '../src/email/email-provider.js';
 import { createApplication } from '../src/application.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -47,6 +47,7 @@ describeDatabase('authentication HTTP lifecycle', () => {
     },
   };
   const deliveredMessages: VerificationEmailMessage[] = [];
+  const deliveredPasswordResetMessages: PasswordResetEmailMessage[] = [];
   let emailProviderAvailable = true;
   let emailDeliveryFails = false;
   const emailProvider: EmailProvider = {
@@ -55,8 +56,13 @@ describeDatabase('authentication HTTP lifecycle', () => {
       if (emailDeliveryFails) throw new Error('SMTP send failed');
       deliveredMessages.push(message);
     },
+    async sendPasswordResetEmail(message) {
+      if (emailDeliveryFails) throw new Error('SMTP send failed');
+      deliveredPasswordResetMessages.push(message);
+    },
   };
   let providerIdentity: ExternalIdentity;
+  let providerExchangeInput: Parameters<OidcIdentityProvider['exchangeAuthorizationCode']>[0] | undefined;
   const oidcProvider: OidcIdentityProvider = {
     provider: 'GOOGLE',
     isConfigured: () => true,
@@ -68,7 +74,10 @@ describeDatabase('authentication HTTP lifecycle', () => {
       url.searchParams.set('code_challenge_method', 'S256');
       return url.toString();
     },
-    async exchangeAuthorizationCode() { return providerIdentity; },
+    async exchangeAuthorizationCode(input) {
+      providerExchangeInput = input;
+      return providerIdentity;
+    },
   };
 
   beforeAll(async () => {
@@ -86,8 +95,10 @@ describeDatabase('authentication HTTP lifecycle', () => {
   afterEach(async () => {
     application.get(AuthRateLimiter).reset();
     deliveredMessages.splice(0);
+    deliveredPasswordResetMessages.splice(0);
     emailProviderAvailable = true;
     emailDeliveryFails = false;
+    providerExchangeInput = undefined;
     if (createdEmails.size === 0) return;
 
     const rows = await database.db
@@ -229,7 +240,12 @@ describeDatabase('authentication HTTP lifecycle', () => {
 
     const invalid = await server.inject({ method: 'POST', url: '/auth/register', headers: csrfHeaders(await csrf()), payload: { email: 'not-an-email', password } });
     expectSafeError(invalid, 400);
-    const duplicate = await server.inject({ method: 'POST', url: '/auth/register', headers: csrfHeaders(await csrf()), payload: { email: normalizedEmail, password } });
+    const duplicate = await server.inject({
+      method: 'POST',
+      url: '/auth/register',
+      headers: csrfHeaders(await csrf()),
+      payload: { email: `  ${normalizedEmail.toUpperCase()}  `, password },
+    });
     expectSafeError(duplicate, 409);
     expect(duplicate.body).not.toContain(password);
     expect(duplicate.body).not.toContain(persistedPasswordHash);
@@ -372,12 +388,15 @@ describeDatabase('authentication HTTP lifecycle', () => {
     const server = application.getHttpAdapter().getInstance();
     const fixture = await verifiedFixture();
     expectSafeError(await server.inject({ method: 'POST', url: '/auth/password/forgot', payload: { email: fixture.email } }), 403, 'CSRF_VALIDATION_FAILED');
+    expectSafeError(await server.inject({ method: 'POST', url: '/auth/password/forgot', headers: csrfHeaders(await csrf()), payload: { email: 'not-an-email' } }), 400);
     const existing = await server.inject({ method: 'POST', url: '/auth/password/forgot', headers: csrfHeaders(await csrf()), payload: { email: fixture.email.toUpperCase() } });
     const absent = await server.inject({ method: 'POST', url: '/auth/password/forgot', headers: csrfHeaders(await csrf()), payload: { email: email('forgot-absent') } });
     expect([existing.statusCode, existing.json()]).toEqual([absent.statusCode, absent.json()]);
     expect(existing.json()).toEqual({ status: 'ACCEPTED' });
     expect(existing.body).not.toContain('token');
     expect(existing.body).not.toContain('password');
+    const resetMessage = [...deliveredPasswordResetMessages].reverse().find((candidate) => candidate.to === fixture.email);
+    expect(resetMessage?.passwordResetUrl).toMatch(/^http:\/\/localhost:3000\/reset-password\?token=/);
   });
 
   it('resets passwords with valid single-use tokens, revokes every prior session, and safely rejects invalid tokens', async () => {
@@ -445,19 +464,29 @@ describeDatabase('authentication HTTP lifecycle', () => {
     expect(initiation.body).not.toContain(nonce);
     const nonceCookie = cookieValue(initiation, 'slotlyflow_google_oidc_nonce');
     const verifier = cookieValue(initiation, 'slotlyflow_google_oidc_verifier');
+    const returnPath = cookieValue(initiation, 'slotlyflow_google_oidc_return_path');
     expect(cookie(initiation, 'slotlyflow_google_oidc_nonce')).toContain('HttpOnly');
     expect(cookie(initiation, 'slotlyflow_google_oidc_verifier')).toContain('HttpOnly');
+    expect(cookie(initiation, 'slotlyflow_google_oidc_return_path')).toContain('HttpOnly');
+    expect(returnPath).toBe('/dashboard');
     const [storedState] = await database.db.select().from(oauthAuthorizationStates).where(eq(oauthAuthorizationStates.stateHash, tokenHash(state)));
     const persistedState = requireValue(storedState, 'persisted OIDC state');
     expect(persistedState).toMatchObject({ provider: 'GOOGLE', nonceHash: tokenHash(nonce), codeVerifierHash: tokenHash(verifier), usedAt: null, redirectUri: authConfig.googleOidc.redirectUri });
     expect(challenge).toBe(tokenHash(verifier));
 
     const callback = await server.inject({
-      method: 'GET', url: `/auth/google/callback?state=${encodeURIComponent(state)}&code=provider-code&redirect=https%3A%2F%2Funtrusted.example`,
-      headers: { cookie: `slotlyflow_google_oidc_nonce=${nonceCookie}; slotlyflow_google_oidc_verifier=${verifier}` },
+      method: 'GET', url: `/auth/google/callback?state=${encodeURIComponent(state)}&code=provider-code&iss=${encodeURIComponent('https://accounts.google.com')}&redirect=https%3A%2F%2Funtrusted.example`,
+      headers: { cookie: `slotlyflow_google_oidc_nonce=${nonceCookie}; slotlyflow_google_oidc_verifier=${verifier}; slotlyflow_google_oidc_return_path=${returnPath}` },
     });
     expect(callback.statusCode).toBe(302);
-    expect(location(callback)).toBe(authConfig.googleOidc.webAppUrl);
+    expect(providerExchangeInput).toEqual({
+      code: 'provider-code',
+      state,
+      nonce: nonceCookie,
+      codeVerifier: verifier,
+      authorizationResponseIssuer: 'https://accounts.google.com',
+    });
+    expect(location(callback)).toBe('http://localhost:3000/dashboard');
     const sessionToken = cookieValue(callback, authConfig.session.cookieName);
     expect(cookie(callback, authConfig.session.cookieName)).toContain('HttpOnly');
     const [user] = await database.db.select().from(users).where(eq(users.emailNormalized, googleEmail));
@@ -470,6 +499,16 @@ describeDatabase('authentication HTTP lifecycle', () => {
     expect((await database.db.select().from(oauthAuthorizationStates).where(eq(oauthAuthorizationStates.id, persistedState.id)))[0]?.usedAt).toEqual(expect.any(Date));
   });
 
+  it('preserves only a safe dashboard return path for Google authorization', async () => {
+    const server = application.getHttpAdapter().getInstance();
+
+    const safe = await server.inject({ method: 'GET', url: '/auth/google?returnTo=%2Fdashboard%2Fconnect' });
+    const unsafe = await server.inject({ method: 'GET', url: '/auth/google?returnTo=https%3A%2F%2Fevil.example' });
+
+    expect(cookieValue(safe, 'slotlyflow_google_oidc_return_path')).toBe('/dashboard/connect');
+    expect(cookieValue(unsafe, 'slotlyflow_google_oidc_return_path')).toBe('/dashboard');
+  });
+
   it('fails closed for missing or replayed state and links only a verified local account with the same email', async () => {
     const server = application.getHttpAdapter().getInstance();
     const local = await verifiedFixture();
@@ -480,7 +519,7 @@ describeDatabase('authentication HTTP lifecycle', () => {
     const verifier = cookieValue(initiation, 'slotlyflow_google_oidc_verifier');
     expectSafeError(await server.inject({ method: 'GET', url: '/auth/google/callback?state=invalid&code=provider-code' }), 400, 'OIDC_AUTHORIZATION_INVALID');
     const callbackHeaders = { cookie: `slotlyflow_google_oidc_nonce=${nonce}; slotlyflow_google_oidc_verifier=${verifier}` };
-    const callbackUrl = `/auth/google/callback?state=${encodeURIComponent(state)}&code=provider-code`;
+    const callbackUrl = `/auth/google/callback?state=${encodeURIComponent(state)}&code=provider-code&iss=${encodeURIComponent('https://accounts.google.com')}`;
     expectSafeError(await server.inject({
       method: 'GET', url: callbackUrl,
       headers: { cookie: `slotlyflow_google_oidc_nonce=${nonce}; slotlyflow_google_oidc_verifier=${randomBytes(32).toString('base64url')}` },
@@ -501,7 +540,7 @@ describeDatabase('authentication HTTP lifecycle', () => {
     const nonce = cookieValue(initiation, 'slotlyflow_google_oidc_nonce');
     const verifier = cookieValue(initiation, 'slotlyflow_google_oidc_verifier');
     expectSafeError(await server.inject({
-      method: 'GET', url: `/auth/google/callback?state=${encodeURIComponent(state)}&code=provider-code`,
+      method: 'GET', url: `/auth/google/callback?state=${encodeURIComponent(state)}&code=provider-code&iss=${encodeURIComponent('https://accounts.google.com')}`,
       headers: { cookie: `slotlyflow_google_oidc_nonce=${nonce}; slotlyflow_google_oidc_verifier=${verifier}` },
     }), 403, 'GOOGLE_ACCOUNT_LINKING_REQUIRED');
     expect((await database.db.select().from(authenticationIdentities).where(eq(authenticationIdentities.providerSubject, providerIdentity.providerSubject))).length).toBe(0);

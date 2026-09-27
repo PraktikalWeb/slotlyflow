@@ -6,3 +6,8 @@ build/
 .env
 .env.local
 *.log
+.pnpm-store/
+.tmp-chrome-*/
+.tmp-ngrok/
+**/tsconfig.tsbuildinfo
+.env.test.local
