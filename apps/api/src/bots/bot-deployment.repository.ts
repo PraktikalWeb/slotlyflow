@@ -76,7 +76,7 @@ export interface BotDeploymentRepository {
     readonly actor: PlatformActor;
     readonly deploymentId: string;
     readonly botVersionId: string;
-    readonly configuration: BotDeploymentConfiguration | undefined;
+    readonly configuration?: BotDeploymentConfiguration;
   }): Promise<BotDeploymentMutationOutcome>;
   resolveActiveForTrustedConnection(input: {
     readonly organizationId: string;
@@ -329,7 +329,7 @@ export class DrizzleBotDeploymentRepository implements BotDeploymentRepository {
     readonly actor: PlatformActor;
     readonly deploymentId: string;
     readonly botVersionId: string;
-    readonly configuration: BotDeploymentConfiguration | undefined;
+    readonly configuration?: BotDeploymentConfiguration;
   }): Promise<BotDeploymentMutationOutcome> {
     return this.db.transaction(async (tx) => {
       const [current] = await tx.select().from(botDeployments).where(eq(botDeployments.id, input.deploymentId)).for('update');

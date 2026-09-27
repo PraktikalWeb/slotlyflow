@@ -19,11 +19,13 @@ export interface CoexistenceContactIdentity {
   readonly phoneNumber: string;
 }
 
-export interface ContactPersistenceResult {
-  readonly outcome: 'created' | 'existing' | 'unknown_connection';
-  readonly organizationId?: string;
-  readonly connectionId?: string;
-}
+export type ContactPersistenceResult =
+  | { readonly outcome: 'unknown_connection' }
+  | {
+      readonly outcome: 'created' | 'existing';
+      readonly organizationId: string;
+      readonly connectionId: string;
+    };
 
 export interface ContactBatchPersistenceResult {
   readonly created: number;
@@ -32,8 +34,12 @@ export interface ContactBatchPersistenceResult {
   readonly skipped: number;
 }
 
-export interface ContactBatchRepositoryResult extends ContactBatchPersistenceResult {
-  readonly outcome: 'persisted' | 'unknown_connection';
-  readonly organizationId?: string;
-  readonly connectionId?: string;
-}
+export type ContactBatchRepositoryResult =
+  | (ContactBatchPersistenceResult & {
+      readonly outcome: 'unknown_connection';
+    })
+  | (ContactBatchPersistenceResult & {
+      readonly outcome: 'persisted';
+      readonly organizationId: string;
+      readonly connectionId: string;
+    });

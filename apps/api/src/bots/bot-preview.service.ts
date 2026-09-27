@@ -56,7 +56,8 @@ export class BotPreviewService {
         whatsappConnectionId: connection.id,
       });
       if (deployment === undefined) throw new ConflictException({ code: 'BOT_PREVIEW_NOT_CONFIGURED' });
-      if (!isTrustedBotImplementationKey(deployment.implementationKey)) {
+      const implementationKey = deployment.implementationKey;
+      if (!isTrustedBotImplementationKey(implementationKey)) {
         throw new ConflictException({ code: 'BOT_PREVIEW_IMPLEMENTATION_UNAVAILABLE' });
       }
 
@@ -96,7 +97,7 @@ export class BotPreviewService {
           input: request.input,
           deployment,
         };
-        const outcome = await registry[deployment.implementationKey].execute(runtimeContext);
+        const outcome = await registry[implementationKey].execute(runtimeContext);
         if (outcome !== 'EXECUTED' && outcome !== 'SKIPPED_HUMAN_HANDOVER') {
           throw new ServiceUnavailableException({ code: 'BOT_PREVIEW_EXECUTION_FAILED' });
         }

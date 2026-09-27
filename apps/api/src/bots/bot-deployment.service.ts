@@ -172,7 +172,7 @@ function parseCreateDeploymentBody(value: unknown): {
 
 function parseChangeDeploymentVersionBody(value: unknown): {
   readonly botVersionId: string;
-  readonly configuration: BotDeploymentConfiguration | undefined;
+  readonly configuration?: BotDeploymentConfiguration;
 } {
   if (!isRecord(value) || hasUnknownKeys(value, ['botVersionId', 'configuration'])) invalid();
   const botVersionId = parseUuid(value.botVersionId);
