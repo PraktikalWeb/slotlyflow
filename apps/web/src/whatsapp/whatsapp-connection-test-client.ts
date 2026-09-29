@@ -16,9 +16,11 @@ export interface WhatsAppConnectionTest {
   readonly completedAt: string | null;
 }
 
+export type StartConnectionTestIssue = ConnectionTestPhoneNumberIssue | 'UNAVAILABLE';
+
 export type StartConnectionTestResult =
   | { readonly ok: true; readonly test: WhatsAppConnectionTest }
-  | { readonly ok: false; readonly issue: ConnectionTestPhoneNumberIssue | 'UNAVAILABLE' };
+  | { readonly ok: false; readonly issue: StartConnectionTestIssue };
 
 export async function getConnectionTest(organizationId: string, fetcher: TestFetch = fetch): Promise<WhatsAppConnectionTest | undefined> {
   try {
@@ -49,7 +51,7 @@ export async function startConnectionTest(organizationId: string, testPhoneNumbe
   }
 }
 
-async function startIssue(response: Response): Promise<StartConnectionTestResult['issue']> {
+async function startIssue(response: Response): Promise<StartConnectionTestIssue> {
   try {
     const payload: unknown = await response.json();
     const code = typeof payload === 'object' && payload !== null && 'error' in payload

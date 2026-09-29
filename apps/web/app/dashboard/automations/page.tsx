@@ -213,7 +213,7 @@ function ConnectionTestPanel({ organizationId }: Readonly<{ organizationId: stri
     setError(undefined);
     const started = await startConnectionTest(organizationId, number);
     setStarting(false);
-    if (!started.ok) {
+    if (started.ok === false) {
       if (started.issue !== 'UNAVAILABLE') {
         setPhoneError(connectionTestPhoneNumberMessage(started.issue));
         return;
