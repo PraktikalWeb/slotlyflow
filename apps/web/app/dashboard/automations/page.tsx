@@ -379,7 +379,7 @@ function BotTestPanel({ organizationId }: Readonly<{ organizationId: string }>):
     }
     inFlight.current = false;
     setSending(false);
-    if (!result.ok) {
+    if (result.ok === false) {
       setFeedback(result.issue === 'NOT_CONFIGURED'
         ? 'No Bot is configured for this Business.'
         : result.issue === 'SESSION_UNAVAILABLE'

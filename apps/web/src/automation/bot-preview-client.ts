@@ -21,9 +21,14 @@ export interface BotPreview {
   readonly handover: boolean;
 }
 
+export type BotPreviewIssue =
+  | 'NOT_CONFIGURED'
+  | 'SESSION_UNAVAILABLE'
+  | 'UNAVAILABLE';
+
 export type BotPreviewResult =
   | { readonly ok: true; readonly preview: BotPreview }
-  | { readonly ok: false; readonly issue: 'NOT_CONFIGURED' | 'SESSION_UNAVAILABLE' | 'UNAVAILABLE' };
+  | { readonly ok: false; readonly issue: BotPreviewIssue };
 
 export async function executeBotPreview(
   organizationId: string,
@@ -87,7 +92,7 @@ async function requestCsrfToken(fetcher: BotPreviewFetch): Promise<string | unde
     : undefined;
 }
 
-async function previewIssue(response: Response): Promise<BotPreviewResult['issue']> {
+async function previewIssue(response: Response): Promise<BotPreviewIssue> {
   try {
     const payload: unknown = await response.json();
     const code = typeof payload === 'object' && payload !== null && 'error' in payload
