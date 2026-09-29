@@ -1,3 +1,9 @@
+import { fileURLToPath } from 'node:url';
+
+const transactionalEmailLogoPath = fileURLToPath(
+  new URL('../../../web/public/slotlyflow-logo-transparent.png', import.meta.url),
+);
+
 export const EMAIL_THEME = {
   font: "'Spline Sans', 'Segoe UI', Arial, sans-serif",
   canvas: '#F7F9F8',
@@ -168,7 +174,7 @@ export function getTransactionalEmailAttachments() {
   return [
     {
       filename: 'slotlyflow-logo.png',
-      path: 'C:/Users/vlk_/slotlyDev/slotlyflow/apps/web/public/slotlyflow-logo-transparent.png',
+      path: transactionalEmailLogoPath,
       cid: 'slotlyflow-logo'
     },
     // TODO(Codex): Replace these 1x1 transparent placeholders with actual PNG fragments from the design team (or CDN URLs).

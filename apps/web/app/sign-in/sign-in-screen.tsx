@@ -86,12 +86,9 @@ export function SignInScreen({ isAdmin = false }: { isAdmin?: boolean } = {}) {
     <div className="relative min-h-screen bg-[var(--canvas)] flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-[400px] flex justify-center mb-8">
         <img
-          src="/slotlyflow-official-full-logo.png"
+          src="/slotlyflow-logo-transparent.png"
           alt="SlotlyFlow"
           className="w-[180px] h-auto object-contain"
-          onError={(event) => {
-            event.currentTarget.src = '/slotlyflow-logo-transparent.png';
-          }}
         />
       </div>
 

@@ -127,13 +127,9 @@ export default function SignUpPage() {
     <div className="relative min-h-screen bg-[var(--canvas)] flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-[400px] flex justify-center mb-8 cursor-pointer" onClick={() => router.push('/')}>
         <img
-          src="/slotlyflow-official-full-logo.png"
+          src="/slotlyflow-logo-transparent.png"
           alt="SlotlyFlow"
           className="w-[180px] h-auto object-contain"
-          onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            target.src = '/slotlyflow-logo-transparent.png';
-          }}
         />
       </div>
 
