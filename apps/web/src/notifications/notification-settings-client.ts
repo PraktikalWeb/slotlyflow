@@ -58,11 +58,16 @@ async function requestCsrfToken(fetcher: NotificationSettingsFetch): Promise<str
 function notificationSettingsFromPayload(value: unknown): BusinessNotificationSettings | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   if (!('handoverTeamId' in value) || !('fallbackEmailAddresses' in value) || !('emailNotificationsEnabled' in value)) return undefined;
-  if ((value.handoverTeamId !== null && typeof value.handoverTeamId !== 'string') || !Array.isArray(value.fallbackEmailAddresses) || typeof value.emailNotificationsEnabled !== 'boolean') return undefined;
-  if (!value.fallbackEmailAddresses.every((address) => typeof address === 'string')) return undefined;
+  const handoverTeamId = value.handoverTeamId;
+  const fallbackEmailAddresses = value.fallbackEmailAddresses;
+  const emailNotificationsEnabled = value.emailNotificationsEnabled;
+  if (handoverTeamId !== null && typeof handoverTeamId !== 'string') return undefined;
+  if (!Array.isArray(fallbackEmailAddresses)) return undefined;
+  if (!fallbackEmailAddresses.every((address): address is string => typeof address === 'string')) return undefined;
+  if (typeof emailNotificationsEnabled !== 'boolean') return undefined;
   return {
-    handoverTeamId: value.handoverTeamId,
-    fallbackEmailAddresses: value.fallbackEmailAddresses,
-    emailNotificationsEnabled: value.emailNotificationsEnabled,
+    handoverTeamId,
+    fallbackEmailAddresses,
+    emailNotificationsEnabled,
   };
 }
