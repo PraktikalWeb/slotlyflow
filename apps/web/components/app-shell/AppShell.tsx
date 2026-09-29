@@ -21,11 +21,13 @@ export default function AppShell({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- Mount hydration and stored sidebar preference are intentionally synchronized after the client mounts. */
     setMounted(true);
     const stored = localStorage.getItem('slotlyflow_sidebar_collapsed');
     if (stored === 'true') {
       setIsSidebarCollapsed(true);
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   const toggleSidebar = () => {

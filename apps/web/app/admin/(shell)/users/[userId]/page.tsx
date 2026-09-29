@@ -1,7 +1,6 @@
 "use client";
 
 import { use, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { SemanticIcon } from '@/src/icons/semantic-icon';
 import Link from 'next/link';
 
@@ -29,7 +28,6 @@ const USER_DATA = {
 
 export default function AdminUserDetailPage({ params }: { params: Promise<{ userId: string }> }) {
   use(params);
-  const router = useRouter();
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
   const [removingBusiness, setRemovingBusiness] = useState<string | null>(null);
 

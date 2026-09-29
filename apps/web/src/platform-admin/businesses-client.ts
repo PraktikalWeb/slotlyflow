@@ -209,10 +209,12 @@ function platformBusinessDetailConnectionFromPayload(value: unknown): PlatformBu
 }
 
 function platformWhatsAppConnectionFromPayload(value: unknown): PlatformBusinessListItem['whatsappConnection'] {
-  if (!isRecord(value) || !isWhatsAppConnectionStatus(value.status) || (value.displayPhoneNumber !== null && !isNonEmptyString(value.displayPhoneNumber))) {
+  if (!isRecord(value) || !isWhatsAppConnectionStatus(value.status)) {
     return undefined;
   }
-  return { status: value.status, displayPhoneNumber: value.displayPhoneNumber };
+  const displayPhoneNumber = value.displayPhoneNumber;
+  if (!isNullableString(displayPhoneNumber)) return undefined;
+  return { status: value.status, displayPhoneNumber };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

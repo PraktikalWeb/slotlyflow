@@ -39,6 +39,7 @@ export default function AutomationsPage(): React.JSX.Element {
 
   React.useEffect(() => {
     if (searchParams.get('connection-test') !== '1') return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- The connection-test query intentionally selects the existing tab on navigation.
     setActiveTab('Connection Test');
     document.getElementById('connection-test')?.focus();
   }, [searchParams]);
@@ -123,6 +124,7 @@ function BotPublicationPanel({ organizationId }: Readonly<{ organizationId: stri
   }, [organizationId]);
 
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Business changes intentionally start the existing publication load.
     void load();
     return () => { publicationRequestId.current += 1; };
   }, [load]);
@@ -200,7 +202,10 @@ function ConnectionTestPanel({ organizationId }: Readonly<{ organizationId: stri
     setLoading(false);
   }, [organizationId]);
 
-  React.useEffect(() => { void load(); }, [load]);
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Business changes intentionally start the existing connection-test load.
+    void load();
+  }, [load]);
   React.useEffect(() => {
     if (test?.status !== 'IN_PROGRESS') return;
     const interval = window.setInterval(() => { void load(); }, 4_000);
@@ -349,12 +354,14 @@ function BotTestPanel({ organizationId }: Readonly<{ organizationId: string }>):
     requestId.current += 1;
     messageId.current = 0;
     inFlight.current = false;
+    /* eslint-disable react-hooks/set-state-in-effect -- Business changes intentionally reset the existing isolated preview session state. */
     setMessages([]);
     setInput('');
     setSending(false);
     setPreviewSessionId(null);
     setHandover(false);
     setFeedback(undefined);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [organizationId]);
 
   const submit = async (botInput: BotPreviewInput, visibleCustomerText: string): Promise<void> => {
@@ -565,6 +572,7 @@ function NotificationsPanel({ businessName, organizationId }: Readonly<{ busines
   }, [organizationId]);
 
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Business changes intentionally start the existing notification-settings load.
     void load();
     return () => { settingsRequestId.current += 1; };
   }, [load]);

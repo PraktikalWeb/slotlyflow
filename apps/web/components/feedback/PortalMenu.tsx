@@ -15,6 +15,7 @@ export const PortalMenu = ({ isOpen, onClose, triggerRef, children }: PortalMenu
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Portals intentionally become available only after the client mounts.
     setMounted(true);
   }, []);
 

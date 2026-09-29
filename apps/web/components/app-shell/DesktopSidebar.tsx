@@ -44,6 +44,7 @@ export const DesktopSidebar = ({ isCollapsed, setIsCollapsed }: { isCollapsed: b
   else if (pathname.includes('profile')) activeTab = 'Profile';
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- The existing client-only sidebar rendering begins after hydration.
     setMounted(true);
   }, []);
 
@@ -155,7 +156,7 @@ export const DesktopSidebar = ({ isCollapsed, setIsCollapsed }: { isCollapsed: b
                     </button>
                     <Link
                       href="/dashboard/settings"
-                      onClick={(e) => {
+                      onClick={() => {
                         setIsOrgOpen(false);
                       }}
                       className={`relative p-1.5 mr-2 rounded-md transition-all group/tooltip shrink-0 flex items-center justify-center ${

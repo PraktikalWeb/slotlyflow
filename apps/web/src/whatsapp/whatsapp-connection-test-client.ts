@@ -34,7 +34,7 @@ export async function getConnectionTest(organizationId: string, fetcher: TestFet
 
 export async function startConnectionTest(organizationId: string, testPhoneNumber: string, fetcher: TestFetch = fetch): Promise<StartConnectionTestResult> {
   const normalized = normalizeConnectionTestPhoneNumber(testPhoneNumber);
-  if (!normalized.ok) return { ok: false, issue: normalized.issue };
+  if (normalized.ok === false) return { ok: false, issue: normalized.issue };
   try {
     const csrf = await csrfToken(fetcher);
     if (csrf === undefined) return { ok: false, issue: 'UNAVAILABLE' };

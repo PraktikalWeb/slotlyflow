@@ -2,7 +2,6 @@
 
 import { SemanticIcon } from "@/src/icons/semantic-icon";
 import Link from "next/link";
-import { useState } from "react";
 
 const USERS_DATA = [
   { id: 1, name: 'Emma Watson', email: 'emma@luminaspas.com', initial: 'E', businesses: [{ name: 'Lumina Spas', role: 'OWNER' }], emailVerified: true, platformRole: null, joined: 'Oct 12, 2023', status: 'active' },

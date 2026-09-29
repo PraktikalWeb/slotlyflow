@@ -2,7 +2,6 @@
 
 import { use, useState } from 'react';
 import { SemanticIcon } from '@/src/icons/semantic-icon';
-import Link from 'next/link';
 
 // Mock Subscription Data
 const SUBSCRIPTION_DATA = {
@@ -29,7 +28,7 @@ const SUBSCRIPTION_DATA = {
 };
 
 export default function AdminBusinessSubscriptionPage({ params }: { params: Promise<{ businessId: string }> }) {
-  const { businessId } = use(params);
+  use(params);
   
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);

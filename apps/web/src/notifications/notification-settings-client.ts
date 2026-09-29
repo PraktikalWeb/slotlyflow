@@ -61,13 +61,20 @@ function notificationSettingsFromPayload(value: unknown): BusinessNotificationSe
   const handoverTeamId = value.handoverTeamId;
   const fallbackEmailAddresses = value.fallbackEmailAddresses;
   const emailNotificationsEnabled = value.emailNotificationsEnabled;
-  if (handoverTeamId !== null && typeof handoverTeamId !== 'string') return undefined;
-  if (!Array.isArray(fallbackEmailAddresses)) return undefined;
-  if (!fallbackEmailAddresses.every((address): address is string => typeof address === 'string')) return undefined;
+  if (!isNullableString(handoverTeamId)) return undefined;
+  if (!isStringArray(fallbackEmailAddresses)) return undefined;
   if (typeof emailNotificationsEnabled !== 'boolean') return undefined;
   return {
     handoverTeamId,
     fallbackEmailAddresses,
     emailNotificationsEnabled,
   };
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }

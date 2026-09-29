@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { SemanticIcon } from "@/src/icons/semantic-icon";
 import { useLogout } from '@/src/auth/logout-provider';
 import Link from "next/link";
-import Image from "next/image";
 
 const SIDEBAR_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' as const, path: '/admin' },

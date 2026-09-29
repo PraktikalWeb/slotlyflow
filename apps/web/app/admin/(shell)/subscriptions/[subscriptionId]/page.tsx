@@ -40,7 +40,7 @@ const SUB_DATA = {
 
 export default function AdminSubscriptionDetailPage({ params }: { params: Promise<{ subscriptionId: string }> }) {
   const router = useRouter();
-  const { subscriptionId } = use(params);
+  use(params);
   
   // Modals
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);

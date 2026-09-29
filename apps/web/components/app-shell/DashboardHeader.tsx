@@ -25,6 +25,7 @@ export function DashboardHeader({ toggleSidebar, isSidebarCollapsed }: { toggleS
   const [notificationsUnavailable, setNotificationsUnavailable] = React.useState(false);
   const notificationRequestId = React.useRef(0);
   const activeOrganizationId = React.useRef(organizationId);
+  // eslint-disable-next-line react-hooks/refs -- The current Organization must be visible synchronously to in-flight notification guards.
   activeOrganizationId.current = organizationId;
 
   const refreshNotifications = React.useCallback(async () => {
@@ -50,8 +51,10 @@ export function DashboardHeader({ toggleSidebar, isSidebarCollapsed }: { toggleS
   }, [organizationId]);
 
   React.useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- Business changes intentionally close stale UI and start the existing notification refresh. */
     setNotificationMenuOpen(false);
     void refreshNotifications();
+    /* eslint-enable react-hooks/set-state-in-effect */
     return () => { notificationRequestId.current += 1; };
   }, [refreshNotifications]);
 

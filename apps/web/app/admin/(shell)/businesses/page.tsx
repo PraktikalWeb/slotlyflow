@@ -21,6 +21,7 @@ export default function BusinessesPage() {
 
   useEffect(() => {
     const controller = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Query changes intentionally enter the existing loading state before fetching.
     setState('loading');
     void listPlatformBusinesses({ page, pageSize, search: searchQuery }, fetch, undefined, controller.signal)
       .then((nextResult) => {

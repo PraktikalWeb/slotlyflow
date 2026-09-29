@@ -25,6 +25,7 @@ export default function AdminBusinessDetailPage() {
 
   useEffect(() => {
     if (typeof organizationId !== 'string' || organizationId === '') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Invalid route parameters intentionally transition to the existing not-found state.
       setState({ status: 'not-found' });
       return;
     }

@@ -8,6 +8,10 @@ interface PortalTooltipProps {
   disabled?: boolean;
 }
 
+type TooltipTriggerProps = React.HTMLAttributes<HTMLElement> & {
+  ref?: React.Ref<HTMLElement>;
+};
+
 export const PortalTooltip = ({ content, children, disabled = false }: PortalTooltipProps) => {
   const [isVisible, setIsVisible] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -15,6 +19,7 @@ export const PortalTooltip = ({ content, children, disabled = false }: PortalToo
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Portals intentionally become available only after the client mounts.
     setMounted(true);
   }, []);
 
@@ -49,26 +54,26 @@ export const PortalTooltip = ({ content, children, disabled = false }: PortalToo
   const show = () => !disabled && setIsVisible(true);
   const hide = () => setIsVisible(false);
 
-  const childElement = children as React.ReactElement<any>;
+  const childElement = children as React.ReactElement<TooltipTriggerProps>;
   const child = React.cloneElement(childElement, {
     ref: triggerRef,
-    onMouseEnter: (e: React.MouseEvent) => {
+    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
       show();
       childElement.props.onMouseEnter?.(e);
     },
-    onMouseLeave: (e: React.MouseEvent) => {
+    onMouseLeave: (e: React.MouseEvent<HTMLElement>) => {
       hide();
       childElement.props.onMouseLeave?.(e);
     },
-    onFocus: (e: React.FocusEvent) => {
+    onFocus: (e: React.FocusEvent<HTMLElement>) => {
       show();
       childElement.props.onFocus?.(e);
     },
-    onBlur: (e: React.FocusEvent) => {
+    onBlur: (e: React.FocusEvent<HTMLElement>) => {
       hide();
       childElement.props.onBlur?.(e);
     },
-  } as React.HTMLAttributes<HTMLElement> & { ref: React.RefObject<HTMLElement | null> });
+  });
 
   if (!mounted || !isVisible || disabled) return child;
 

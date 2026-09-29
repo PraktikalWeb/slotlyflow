@@ -52,8 +52,10 @@ export default function CustomerWhatsApp(): React.JSX.Element {
 
   React.useEffect(() => {
     currentOrganizationIdRef.current = organizationId;
+    /* eslint-disable react-hooks/set-state-in-effect -- Business changes intentionally reset transient onboarding UI state. */
     setConnectStep({ kind: 'idle' });
     setFeedback(undefined);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [organizationId]);
 
   const canManage = selectedMembership.role === 'OWNER' || selectedMembership.role === 'ADMIN';
