@@ -24,7 +24,7 @@ export default function DashboardPage(): React.JSX.Element {
             : { label: 'Not connected', detail: 'No WhatsApp number is currently connected.', connected: false };
 
   return (
-    <div className="max-w-[1440px] mx-auto px-8 py-8 space-y-6">
+    <div className="max-w-[1440px] mx-auto p-4 pt-5 space-y-6 sm:p-6 lg:px-8 lg:py-8">
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <MetricUnavailableCard detail="Message summaries are not available yet." title="Messages" />

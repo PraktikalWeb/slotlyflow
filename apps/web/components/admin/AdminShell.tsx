@@ -11,6 +11,7 @@ const SIDEBAR_ITEMS = [
   { id: 'businesses', label: 'Businesses', icon: 'organization' as const, path: '/admin/businesses' },
   { id: 'users', label: 'Users', icon: 'team' as const, path: '/admin/users' },
   { id: 'whatsapp', label: 'WhatsApp', icon: 'conversations' as const, path: '/admin/whatsapp' },
+  { id: 'bots', label: 'Bots', icon: 'bot' as const, path: '/admin/bots' },
   { id: 'subscriptions', label: 'Subscriptions', icon: 'creditCard' as const, path: '/admin/subscriptions' },
   { id: 'operations', label: 'Operations', icon: 'activity' as const, path: '/admin/operations' },
   { id: 'audit', label: 'Audit Logs', icon: 'audit' as const, path: '/admin/audit' },
@@ -208,7 +209,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </header>
 
         {/* Dashboard Content */}
-        <main className="flex-1 p-8 overflow-y-auto">
+        <main className="flex-1 px-8 py-0 overflow-y-auto">
           {children}
         </main>
       </div>

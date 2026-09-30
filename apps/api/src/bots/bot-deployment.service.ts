@@ -7,6 +7,8 @@ import type {
   BotDeploymentConfiguration,
   BotDeploymentRecord,
   BotVersionRecord,
+  PlatformBotCatalogueDefinition,
+  PlatformBotDeploymentListItem,
 } from './bot-deployment.types.js';
 import type { PlatformAuthorizationContext } from '../platform-admin/platform-admin.types.js';
 import { isTrustedBotImplementationKey } from './trusted-bot-implementations.js';
@@ -23,6 +25,37 @@ type DevelopmentProvisioningActor = { readonly userId: string; readonly role: st
 @Injectable()
 export class BotDeploymentService {
   constructor(@Inject(BOT_DEPLOYMENT_REPOSITORY) private readonly repository: BotDeploymentRepository) {}
+
+  async listCatalogue(): Promise<{ readonly definitions: readonly PlatformBotCatalogueDefinition[] }> {
+    return { definitions: await this.repository.listCatalogue() };
+  }
+
+  async listDeployments(
+    pageValue: unknown,
+    pageSizeValue: unknown,
+    organizationIdValue: unknown,
+    botDefinitionIdValue: unknown,
+    whatsappConnectionIdValue: unknown,
+  ): Promise<{
+    readonly deployments: readonly PlatformBotDeploymentListItem[];
+    readonly total: number;
+    readonly page: number;
+    readonly pageSize: number;
+  }> {
+    const page = parsePositiveInteger(pageValue, 1, 10_000);
+    const pageSize = parsePositiveInteger(pageSizeValue, 25, 100);
+    const organizationId = parseOptionalUuid(organizationIdValue);
+    const botDefinitionId = parseOptionalUuid(botDefinitionIdValue);
+    const whatsappConnectionId = parseOptionalUuid(whatsappConnectionIdValue);
+    const result = await this.repository.listDeployments({
+      pageSize,
+      offset: (page - 1) * pageSize,
+      ...(organizationId === undefined ? {} : { organizationId }),
+      ...(botDefinitionId === undefined ? {} : { botDefinitionId }),
+      ...(whatsappConnectionId === undefined ? {} : { whatsappConnectionId }),
+    });
+    return { ...result, page, pageSize };
+  }
 
   async createDefinition(actor: PlatformAuthorizationContext, body: unknown): Promise<BotDefinitionRecord> {
     return this.createDefinitionForActor(actorFromContext(actor), body);
@@ -217,6 +250,18 @@ function validateJsonValue(value: unknown, depth: number): void {
 function parseUuid(value: unknown): string {
   if (typeof value !== 'string' || !uuidPattern.test(value)) invalid();
   return value;
+}
+
+function parseOptionalUuid(value: unknown): string | undefined {
+  return value === undefined ? undefined : parseUuid(value);
+}
+
+function parsePositiveInteger(value: unknown, fallback: number, maximum: number): number {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) invalid();
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 1 || number > maximum) invalid();
+  return number;
 }
 
 function assertUuid(value: string, code: string): void {

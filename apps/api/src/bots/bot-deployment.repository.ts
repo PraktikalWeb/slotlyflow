@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import {
   type SlotlyFlowDatabase,
   auditLogs,
@@ -15,10 +15,15 @@ import type {
   BotDefinitionRecord,
   BotDeploymentConfiguration,
   BotDeploymentRecord,
+  PlatformBotCatalogueDefinition,
+  PlatformBotCatalogueVersion,
+  PlatformBotDeploymentListItem,
+  PlatformBotDeploymentListQuery,
   BotPublicationState,
   BotVersionRecord,
   ResolvedBotRuntimeMetadata,
 } from './bot-deployment.types.js';
+import { isTrustedBotImplementationKey } from './trusted-bot-implementations.js';
 
 type DatabaseTransaction = Parameters<SlotlyFlowDatabase['transaction']>[0] extends (tx: infer Transaction) => unknown
   ? Transaction
@@ -43,7 +48,17 @@ export type BotDeploymentMutationOutcome =
   | { readonly outcome: 'connection_unavailable' }
   | { readonly outcome: 'version_not_deployable' };
 
+export type PlatformBotPublicationMutationOutcome =
+  | { readonly outcome: 'updated'; readonly publication: BotPublicationState }
+  | { readonly outcome: 'not_found' }
+  | { readonly outcome: 'deployment_inactive' };
+
 export interface BotDeploymentRepository {
+  listCatalogue(): Promise<readonly PlatformBotCatalogueDefinition[]>;
+  listDeployments(input: PlatformBotDeploymentListQuery): Promise<{
+    readonly deployments: readonly PlatformBotDeploymentListItem[];
+    readonly total: number;
+  }>;
   createDefinition(input: {
     readonly actor: PlatformActor;
     readonly definitionKey: string;
@@ -90,6 +105,12 @@ export interface BotDeploymentRepository {
     readonly actorUserId: string | null;
     readonly isPublished: boolean;
   }): Promise<BotPublicationState | undefined>;
+  setPublicationForPlatformDeployment(input: {
+    readonly deploymentId: string;
+    readonly actorUserId: string;
+    readonly actorPlatformRole: string;
+    readonly isPublished: boolean;
+  }): Promise<PlatformBotPublicationMutationOutcome>;
   hasBotPublicationSchema(): Promise<boolean>;
   findOrganizationForProvisioning(organizationId: string): Promise<{ readonly id: string; readonly name: string } | undefined>;
   findConnectionForProvisioning(connectionId: string): Promise<{
@@ -120,6 +141,158 @@ function deploymentFromRow(row: typeof botDeployments.$inferSelect): BotDeployme
 @Injectable()
 export class DrizzleBotDeploymentRepository implements BotDeploymentRepository {
   constructor(@Inject(AUTH_DATABASE) private readonly db: SlotlyFlowDatabase) {}
+
+  async listCatalogue(): Promise<readonly PlatformBotCatalogueDefinition[]> {
+    const rows = await this.db.select({
+      definitionId: botDefinitions.id,
+      definitionName: botDefinitions.name,
+      definitionDescription: botDefinitions.description,
+      definitionStatus: botDefinitions.status,
+      definitionCreatedAt: botDefinitions.createdAt,
+      definitionUpdatedAt: botDefinitions.updatedAt,
+      versionId: botVersions.id,
+      version: botVersions.version,
+      versionStatus: botVersions.status,
+      implementationKey: botVersions.implementationKey,
+      configurationSchema: botVersions.configurationSchema,
+      publishedAt: botVersions.publishedAt,
+      versionCreatedAt: botVersions.createdAt,
+    }).from(botDefinitions)
+      .leftJoin(botVersions, eq(botVersions.botDefinitionId, botDefinitions.id))
+      .orderBy(asc(botDefinitions.name), asc(botDefinitions.id), desc(botVersions.publishedAt));
+
+    type MutableCatalogueDefinition = Omit<PlatformBotCatalogueDefinition, 'versions'> & {
+      versions: PlatformBotCatalogueVersion[];
+    };
+    const definitions = new Map<string, MutableCatalogueDefinition>();
+    for (const row of rows) {
+      let definition = definitions.get(row.definitionId);
+      if (definition === undefined) {
+        definition = {
+          id: row.definitionId,
+          name: row.definitionName,
+          description: row.definitionDescription,
+          status: row.definitionStatus,
+          createdAt: row.definitionCreatedAt,
+          updatedAt: row.definitionUpdatedAt,
+          versions: [],
+        };
+        definitions.set(row.definitionId, definition);
+      }
+      if (
+        row.versionId !== null
+        && row.version !== null
+        && row.versionStatus !== null
+        && row.implementationKey !== null
+        && row.publishedAt !== null
+        && row.versionCreatedAt !== null
+        && isTrustedBotImplementationKey(row.implementationKey)
+      ) {
+        definition.versions.push({
+          id: row.versionId,
+          version: row.version,
+          status: row.versionStatus,
+          implementationKey: row.implementationKey,
+          configurationSchema: row.configurationSchema,
+          publishedAt: row.publishedAt,
+          createdAt: row.versionCreatedAt,
+        });
+      }
+    }
+    return [...definitions.values()];
+  }
+
+  async listDeployments(input: PlatformBotDeploymentListQuery): Promise<{
+    readonly deployments: readonly PlatformBotDeploymentListItem[];
+    readonly total: number;
+  }> {
+    const condition = and(
+      input.organizationId === undefined ? undefined : eq(botDeployments.organizationId, input.organizationId),
+      input.botDefinitionId === undefined ? undefined : eq(botVersions.botDefinitionId, input.botDefinitionId),
+      input.whatsappConnectionId === undefined ? undefined : eq(botDeployments.whatsappConnectionId, input.whatsappConnectionId),
+    );
+    const baseQuery = this.db.select({
+      id: botDeployments.id,
+      status: botDeployments.status,
+      isPublished: botDeployments.isPublished,
+      activatedAt: botDeployments.activatedAt,
+      deactivatedAt: botDeployments.deactivatedAt,
+      createdAt: botDeployments.createdAt,
+      updatedAt: botDeployments.updatedAt,
+      organizationId: organizations.id,
+      organizationName: organizations.name,
+      organizationStatus: organizations.status,
+      whatsappConnectionId: whatsappConnections.id,
+      displayPhoneNumber: whatsappConnections.displayPhoneNumber,
+      provider: whatsappConnections.provider,
+      connectionStatus: whatsappConnections.connectionStatus,
+      verificationStatus: whatsappConnections.verificationStatus,
+      botDefinitionId: botDefinitions.id,
+      botName: botDefinitions.name,
+      botVersionId: botVersions.id,
+      version: botVersions.version,
+      implementationKey: botVersions.implementationKey,
+    }).from(botDeployments)
+      .innerJoin(organizations, eq(botDeployments.organizationId, organizations.id))
+      .innerJoin(whatsappConnections, and(
+        eq(botDeployments.organizationId, whatsappConnections.organizationId),
+        eq(botDeployments.whatsappConnectionId, whatsappConnections.id),
+      ))
+      .innerJoin(botVersions, eq(botDeployments.botVersionId, botVersions.id))
+      .innerJoin(botDefinitions, eq(botVersions.botDefinitionId, botDefinitions.id));
+    const rows = await baseQuery
+      .where(condition)
+      .orderBy(desc(botDeployments.updatedAt), asc(botDeployments.id))
+      .limit(input.pageSize)
+      .offset(input.offset);
+    const [totalRow] = await this.db.select({ count: sql<number>`count(*)::int` })
+      .from(botDeployments)
+      .innerJoin(organizations, eq(botDeployments.organizationId, organizations.id))
+      .innerJoin(whatsappConnections, and(
+        eq(botDeployments.organizationId, whatsappConnections.organizationId),
+        eq(botDeployments.whatsappConnectionId, whatsappConnections.id),
+      ))
+      .innerJoin(botVersions, eq(botDeployments.botVersionId, botVersions.id))
+      .innerJoin(botDefinitions, eq(botVersions.botDefinitionId, botDefinitions.id))
+      .where(condition);
+
+    return {
+      deployments: rows.map((row) => ({
+        id: row.id,
+        status: row.status,
+        activatedAt: row.activatedAt,
+        deactivatedAt: row.deactivatedAt,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        business: {
+          id: row.organizationId,
+          name: row.organizationName,
+          status: row.organizationStatus,
+        },
+        whatsappConnection: {
+          id: row.whatsappConnectionId,
+          organizationId: row.organizationId,
+          displayPhoneNumber: row.displayPhoneNumber,
+          provider: row.provider,
+          status: row.connectionStatus,
+          verificationStatus: row.verificationStatus,
+        },
+        bot: {
+          definitionId: row.botDefinitionId,
+          name: row.botName,
+        },
+        version: {
+          id: row.botVersionId,
+          version: row.version,
+          implementationKey: row.implementationKey,
+        },
+        publication: {
+          status: row.isPublished ? 'PUBLISHED' : 'UNPUBLISHED',
+        },
+      })),
+      total: totalRow?.count ?? 0,
+    };
+  }
 
   async hasBotPublicationSchema(): Promise<boolean> {
     const rows = await this.db.execute(sql<{ readonly available: boolean }>`
@@ -423,14 +596,55 @@ export class DrizzleBotDeploymentRepository implements BotDeploymentRepository {
     readonly actorUserId: string | null;
     readonly isPublished: boolean;
   }): Promise<BotPublicationState | undefined> {
+    const result = await this.setPublication({
+      scope: 'organization',
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      isPublished: input.isPublished,
+    });
+    return result.outcome === 'updated' ? result.publication : undefined;
+  }
+
+  setPublicationForPlatformDeployment(input: {
+    readonly deploymentId: string;
+    readonly actorUserId: string;
+    readonly actorPlatformRole: string;
+    readonly isPublished: boolean;
+  }): Promise<PlatformBotPublicationMutationOutcome> {
+    return this.setPublication({
+      scope: 'deployment',
+      deploymentId: input.deploymentId,
+      actorUserId: input.actorUserId,
+      actorPlatformRole: input.actorPlatformRole,
+      isPublished: input.isPublished,
+    });
+  }
+
+  private setPublication(input: {
+    readonly scope: 'organization';
+    readonly organizationId: string;
+    readonly actorUserId: string | null;
+    readonly isPublished: boolean;
+  } | {
+    readonly scope: 'deployment';
+    readonly deploymentId: string;
+    readonly actorUserId: string;
+    readonly actorPlatformRole: string;
+    readonly isPublished: boolean;
+  }): Promise<PlatformBotPublicationMutationOutcome> {
     return this.db.transaction(async (tx) => {
-      const [deployment] = await tx.select().from(botDeployments).where(and(
-        eq(botDeployments.organizationId, input.organizationId),
-        eq(botDeployments.status, 'ACTIVE'),
-      )).for('update');
-      if (deployment === undefined) return undefined;
+      const [deployment] = await tx.select().from(botDeployments).where(
+        input.scope === 'organization'
+          ? and(
+            eq(botDeployments.organizationId, input.organizationId),
+            eq(botDeployments.status, 'ACTIVE'),
+          )
+          : eq(botDeployments.id, input.deploymentId),
+      ).for('update');
+      if (deployment === undefined) return { outcome: 'not_found' };
+      if (deployment.status !== 'ACTIVE') return { outcome: 'deployment_inactive' };
       if (deployment.isPublished === input.isPublished) {
-        return { isPublished: deployment.isPublished };
+        return { outcome: 'updated', publication: { isPublished: deployment.isPublished } };
       }
 
       const now = new Date();
@@ -439,7 +653,7 @@ export class DrizzleBotDeploymentRepository implements BotDeploymentRepository {
         updatedAt: now,
       }).where(and(
         eq(botDeployments.id, deployment.id),
-        eq(botDeployments.organizationId, input.organizationId),
+        eq(botDeployments.organizationId, deployment.organizationId),
         eq(botDeployments.status, 'ACTIVE'),
       )).returning();
       if (updated === undefined) throw new Error('Bot publication update failed.');
@@ -450,23 +664,29 @@ export class DrizzleBotDeploymentRepository implements BotDeploymentRepository {
         targetType: 'bot_deployment',
         targetId: updated.id,
         metadata: {
+          ...(input.scope === 'deployment' ? { actorPlatformRole: input.actorPlatformRole } : {}),
           whatsappConnectionId: updated.whatsappConnectionId,
           botVersionId: updated.botVersionId,
         },
       });
-      return { isPublished: updated.isPublished };
+      return { outcome: 'updated', publication: { isPublished: updated.isPublished } };
     });
   }
 
   private async findDeployableVersion(tx: DatabaseTransaction, botVersionId: string): Promise<{ readonly id: string } | undefined> {
-    const [version] = await tx.select({ id: botVersions.id }).from(botVersions)
+    const [version] = await tx.select({
+      id: botVersions.id,
+      implementationKey: botVersions.implementationKey,
+    }).from(botVersions)
       .innerJoin(botDefinitions, eq(botVersions.botDefinitionId, botDefinitions.id))
       .where(and(
         eq(botVersions.id, botVersionId),
         eq(botVersions.status, 'PUBLISHED'),
         eq(botDefinitions.status, 'ACTIVE'),
       ));
-    return version;
+    return version !== undefined && isTrustedBotImplementationKey(version.implementationKey)
+      ? { id: version.id }
+      : undefined;
   }
 
   private async insertDeploymentAudit(

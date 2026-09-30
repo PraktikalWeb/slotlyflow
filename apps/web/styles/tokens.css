@@ -40,8 +40,8 @@
   /* Layout */
   --sidebar-width-expanded: 244px;
   --sidebar-width-collapsed: 72px;
-  --mobile-header-height: 60px;
-  --mobile-nav-height: 64px;
+  --mobile-header-height: 68px;
+  --mobile-nav-height: 68px;
   
   /* Z-Index */
   --z-background: 0;

@@ -4,6 +4,7 @@ import { DesktopSidebar } from './DesktopSidebar';
 import { DashboardHeader } from './DashboardHeader';
 import { MobileHeader } from './MobileHeader';
 import { MobileBottomNav } from './MobileBottomNav';
+import type { MobileMenu } from './mobile-menu';
 import { DashboardProvider } from '@/src/dashboard/dashboard-context';
 import type { DashboardBusinessMembership, DashboardUser } from '@/src/dashboard/dashboard-types';
 import { WhatsAppConnectionProvider } from '@/src/whatsapp/whatsapp-connection-context';
@@ -19,6 +20,8 @@ export default function AppShell({
 }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [openMobileMenu, setOpenMobileMenu] = useState<MobileMenu>(null);
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- Mount hydration and stored sidebar preference are intentionally synchronized after the client mounts. */
@@ -27,7 +30,12 @@ export default function AppShell({
     if (stored === 'true') {
       setIsSidebarCollapsed(true);
     }
+    const desktopQuery = window.matchMedia('(min-width: 1024px)');
+    const updateDesktop = () => setIsDesktop(desktopQuery.matches);
+    updateDesktop();
+    desktopQuery.addEventListener('change', updateDesktop);
     /* eslint-enable react-hooks/set-state-in-effect */
+    return () => desktopQuery.removeEventListener('change', updateDesktop);
   }, []);
 
   const toggleSidebar = () => {
@@ -39,7 +47,7 @@ export default function AppShell({
   return (
     <DashboardProvider memberships={memberships} user={user}>
       <WhatsAppConnectionProvider>
-        <div className="flex h-screen bg-[var(--canvas)] font-['Spline_Sans'] overflow-hidden text-[var(--ink)]">
+        <div className="flex h-screen bg-[var(--canvas)] font-['Spline_Sans'] overflow-hidden text-[var(--ink)] [height:100dvh] lg:[height:100vh]">
       
       <DesktopSidebar 
         isCollapsed={mounted ? isSidebarCollapsed : false} 
@@ -47,9 +55,9 @@ export default function AppShell({
       />
       
       <main className="flex-1 flex flex-col min-w-0 bg-[var(--canvas)] overflow-hidden">
-        <MobileHeader />
+        <MobileHeader openMenu={openMobileMenu} setOpenMenu={setOpenMobileMenu} />
         
-        {mounted && (
+        {mounted && isDesktop && (
           <div className="hidden lg:block">
             <DashboardHeader 
               toggleSidebar={toggleSidebar} 
@@ -58,12 +66,12 @@ export default function AppShell({
           </div>
         )}
         
-        <div className="flex-1 overflow-y-auto">
+        <div className="mobile-dashboard-scroll min-h-0 flex-1 overflow-y-auto pt-1 lg:pt-0">
           {children}
         </div>
       </main>
       
-      <MobileBottomNav />
+      <MobileBottomNav openMenu={openMobileMenu} setOpenMenu={setOpenMobileMenu} />
         </div>
       </WhatsAppConnectionProvider>
     </DashboardProvider>
