@@ -16,15 +16,19 @@ import {
 import {
   activateBotDeployment,
   createBotDeployment,
+  createBotDefinition,
+  createBotVersion,
   deactivateBotDeployment,
   listBotCatalogue,
   listBotDeployments,
+  listTrustedBotImplementations,
   publishBotDeployment,
   unpublishBotDeployment,
   type PlatformBotCatalogueDefinition,
   type PlatformBotCatalogueVersion,
   type PlatformBotDeployment,
   type PlatformBotMutationResult,
+  type PlatformTrustedImplementation,
 } from '@/src/platform-admin/bots-client';
 
 type TabType = 'deployments' | 'catalogue';
@@ -36,7 +40,7 @@ const deploymentPageSize = 100;
 export default function BotsAdminPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  
+
   const deployAction = searchParams?.get('action') === 'deploy';
   const requestedBusinessId = searchParams?.get('businessId') ?? undefined;
 
@@ -93,19 +97,34 @@ export default function BotsAdminPage() {
     return () => { active = false; };
   }, []);
 
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [addingVersionToDefinitionId, setAddingVersionToDefinitionId] = useState<string>();
+
+  const refreshCatalogue = useCallback(async () => {
+    setCatalogueState('loading');
+    const result = await listBotCatalogue();
+    if (result.ok === false) {
+      setCatalogue([]);
+      setCatalogueState('error');
+      return;
+    }
+    setCatalogue(result.value);
+    setCatalogueState('ready');
+  }, []);
+
   useEffect(() => {
-    const controller = new AbortController();
-    void listBotCatalogue(fetch, undefined, controller.signal).then((result) => {
-      if (controller.signal.aborted) return;
+    let active = true;
+    void listBotCatalogue().then((result) => {
+      if (!active) return;
       if (result.ok === false) {
         setCatalogue([]);
         setCatalogueState('error');
-        return;
+      } else {
+        setCatalogue(result.value);
+        setCatalogueState('ready');
       }
-      setCatalogue(result.value);
-      setCatalogueState('ready');
     });
-    return () => controller.abort();
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -178,9 +197,16 @@ export default function BotsAdminPage() {
           </div>
           <DeploymentsTable deployments={deployments} state={deploymentsState} mutatingDeploymentId={mutatingDeploymentId} onDeploy={() => setIsDeployModalOpen(true)} onLifecycleMutation={handleLifecycleMutation} onPublicationAction={(deployment, action) => setPublicationAction({ deployment, action })} />
         </div>}
-        {activeTab === 'catalogue' && <CatalogueTable definitions={catalogue} state={catalogueState} />}
+        {activeTab === 'catalogue' && <div className="space-y-4">
+          <div className="flex justify-end">
+            <button type="button" onClick={() => setIsRegisterModalOpen(true)} className="h-9 px-4 bg-white border border-[#111816]/20 shadow-sm text-[#111816] rounded-[6px] text-[13px] font-semibold hover:bg-[#F7F9F8] transition-colors cursor-pointer">Register bot</button>
+          </div>
+          <CatalogueTable definitions={catalogue} state={catalogueState} onRegister={() => setIsRegisterModalOpen(true)} onAddVersion={(id) => setAddingVersionToDefinitionId(id)} />
+        </div>}
       </div>
       {isDeployModalOpen && <DeployBotModal businesses={businesses} businessesState={businessesState} definitions={catalogue} catalogueState={catalogueState} initialBusinessId={requestedBusinessId} onClose={closeDeployModal} onCreated={() => { setFeedback({ kind: 'success', message: 'Bot deployment created. Activate and publish it separately when it is ready.' }); void refreshDeployments(); }} />}
+      {isRegisterModalOpen && <RegisterBotModal onClose={() => setIsRegisterModalOpen(false)} onCreated={() => { setFeedback({ kind: 'success', message: 'Bot registered successfully.' }); void refreshCatalogue(); }} onPartialSuccessClose={() => { setIsRegisterModalOpen(false); void refreshCatalogue(); }} />}
+      {addingVersionToDefinitionId !== undefined && <AddVersionModal definition={catalogue.find((d) => d.id === addingVersionToDefinitionId)!} onClose={() => setAddingVersionToDefinitionId(undefined)} onCreated={() => { setFeedback({ kind: 'success', message: 'Bot version added successfully.' }); void refreshCatalogue(); }} />}
       {publicationAction !== undefined && <PublicationConfirmationDialog action={publicationAction.action} pending={mutatingDeploymentId === publicationAction.deployment.id} onCancel={() => setPublicationAction(undefined)} onConfirm={() => { void handlePublicationMutation(); }} />}
     </main>
   );
@@ -191,7 +217,7 @@ function Metric({ label, value, icon, iconClassName }: { readonly label: string;
 }
 
 function DeploymentsTable({ deployments, state, mutatingDeploymentId, onDeploy, onLifecycleMutation, onPublicationAction }: { readonly deployments: readonly PlatformBotDeployment[]; readonly state: LoadState; readonly mutatingDeploymentId: string | undefined; readonly onDeploy: () => void; readonly onLifecycleMutation: (deployment: PlatformBotDeployment, action: 'activate' | 'deactivate') => void; readonly onPublicationAction: (deployment: PlatformBotDeployment, action: PublicationAction) => void }) {
-  return <div className="bg-white rounded-[12px] border border-[#111816]/10 shadow-sm"><div className="overflow-x-auto"><div className="max-h-[min(56vh,560px)] overflow-y-auto"><table className="w-full text-left border-collapse min-w-[1000px]"><thead className="sticky top-0 z-10"><tr className="border-b border-[#111816]/10 bg-[#F7F9F8]"><>{['Business', 'WhatsApp', 'Bot', 'Version', 'Deployment', 'Publication', 'Updated', 'Actions'].map((heading) => <th key={heading} className={`px-5 py-3.5 text-[12px] font-bold text-[#111816]/50 uppercase tracking-wider ${heading === 'Actions' ? 'text-right' : ''}`}>{heading}</th>)}</></tr></thead><tbody className="divide-y divide-[#111816]/5">{state === 'loading' && <TableMessage>Loading deployments…</TableMessage>}{state === 'error' && <TableMessage>Unable to load deployments.</TableMessage>}{state === 'ready' && deployments.length === 0 && <EmptyDeployments onDeploy={onDeploy} />}{state === 'ready' && deployments.map((deployment) => <DeploymentRow key={deployment.id} deployment={deployment} mutating={mutatingDeploymentId === deployment.id} onLifecycleMutation={onLifecycleMutation} onPublicationAction={(action) => onPublicationAction(deployment, action)} />)}</tbody></table></div></div></div>;
+  return <div className="bg-white rounded-[12px] border border-[#111816]/10 shadow-sm"><div className="overflow-x-auto"><div className="max-h-[min(56vh,560px)] overflow-y-auto"><table className="w-full text-left border-collapse min-w-[1000px]"><thead className="sticky top-0 z-10"><tr className="border-b border-[#111816]/10 bg-[#F7F9F8]"><>{['Business', 'WhatsApp', 'Bot', 'Version', 'Deployment', 'Publication', 'Updated', 'Actions'].map((heading) => <th key={heading} className={`px-5 py-3.5 text-[12px] font-bold text-[#111816]/50 uppercase tracking-wider ${heading === 'Actions' ? 'text-right' : ''}`}>{heading}</th>)}</></tr></thead><tbody className="divide-y divide-[#111816]/5">{state === 'loading' && <TableMessage>Loading deploymentsâ€¦</TableMessage>}{state === 'error' && <TableMessage>Unable to load deployments.</TableMessage>}{state === 'ready' && deployments.length === 0 && <EmptyDeployments onDeploy={onDeploy} />}{state === 'ready' && deployments.map((deployment) => <DeploymentRow key={deployment.id} deployment={deployment} mutating={mutatingDeploymentId === deployment.id} onLifecycleMutation={onLifecycleMutation} onPublicationAction={(action) => onPublicationAction(deployment, action)} />)}</tbody></table></div></div></div>;
 }
 
 function TableMessage({ children }: { readonly children: string }) { return <tr><td colSpan={8} className="px-5 py-12 text-center text-[#111816]/50 text-[14px]">{children}</td></tr>; }
@@ -213,14 +239,25 @@ function DeploymentRow({ deployment, mutating, onLifecycleMutation, onPublicatio
 function LifecycleStatus({ status }: { readonly status: PlatformBotDeployment['status'] }) { return <span className={`inline-flex items-center text-[11px] font-bold tracking-wide ${status === 'ACTIVE' ? 'text-green-700' : 'text-[#111816]/50'}`}><span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${status === 'ACTIVE' ? 'bg-green-500' : 'bg-[#111816]/30'}`} />{status === 'ACTIVE' ? 'Active' : 'Inactive'}</span>; }
 function PublicationStatus({ status }: { readonly status: PlatformBotDeployment['publication']['status'] }) { return <span className={`inline-flex items-center px-2 py-0.5 rounded-[4px] border text-[11px] font-bold tracking-wide ${status === 'PUBLISHED' ? 'bg-[#003B2D]/5 text-[#003B2D] border-[#003B2D]/20' : 'bg-transparent text-[#111816]/50 border-[#111816]/10'}`}>{status === 'PUBLISHED' ? 'Published' : 'Not live'}</span>; }
 
-function CatalogueTable({ definitions, state }: { readonly definitions: readonly PlatformBotCatalogueDefinition[]; readonly state: LoadState }) {
-  return <div className="bg-white rounded-[12px] border border-[#111816]/10 shadow-sm overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b border-[#111816]/10 bg-[#F7F9F8]/50">{['Bot Name', 'Description', 'Available Versions', 'Latest Version', 'Status'].map((heading) => <th key={heading} className="px-5 py-3.5 text-[12px] font-bold text-[#111816]/50 uppercase tracking-wider">{heading}</th>)}</tr></thead><tbody className="divide-y divide-[#111816]/5">{state === 'loading' && <tr><td colSpan={5} className="px-5 py-12 text-center text-[#111816]/50 text-[14px]">Loading trusted bots…</td></tr>}{state === 'error' && <tr><td colSpan={5} className="px-5 py-12 text-center text-[#111816]/50 text-[14px]">Unable to load the trusted bot catalogue.</td></tr>}{state === 'ready' && definitions.length === 0 && <tr><td colSpan={5} className="px-5 py-12 text-center text-[#111816]/50 text-[14px]">No trusted bots are available yet.</td></tr>}{state === 'ready' && definitions.map((definition) => <CatalogueRow key={definition.id} definition={definition} />)}</tbody></table></div></div>;
+function CatalogueTable({ definitions, state, onRegister, onAddVersion }: { readonly definitions: readonly PlatformBotCatalogueDefinition[]; readonly state: LoadState; readonly onRegister: () => void; readonly onAddVersion: (id: string) => void }) {
+  return <div className="bg-white rounded-[12px] border border-[#111816]/10 shadow-sm overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b border-[#111816]/10 bg-[#F7F9F8]/50">{['Bot Name', 'Description', 'Available Versions', 'Latest Version', 'Status', 'Actions'].map((heading) => <th key={heading} className={`px-5 py-3.5 text-[12px] font-bold text-[#111816]/50 uppercase tracking-wider ${heading === 'Actions' ? 'text-right' : ''}`}>{heading}</th>)}</tr></thead><tbody className="divide-y divide-[#111816]/5">{state === 'loading' && <tr><td colSpan={6} className="px-5 py-12 text-center text-[#111816]/50 text-[14px]">Loading trusted botsâ€¦</td></tr>}{state === 'error' && <tr><td colSpan={6} className="px-5 py-12 text-center text-[#111816]/50 text-[14px]">Unable to load the trusted bot catalogue.</td></tr>}{state === 'ready' && definitions.length === 0 && <EmptyCatalogue onRegister={onRegister} />}{state === 'ready' && definitions.map((definition) => <CatalogueRow key={definition.id} definition={definition} onAddVersion={() => onAddVersion(definition.id)} />)}</tbody></table></div></div>;
 }
 
-function CatalogueRow({ definition }: { readonly definition: PlatformBotCatalogueDefinition }) {
+function EmptyCatalogue({ onRegister }: { readonly onRegister: () => void }) {
+  return <tr><td colSpan={6} className="px-5 py-16 text-center"><div className="flex flex-col items-center justify-center"><div className="w-12 h-12 rounded-full bg-[#111816]/5 flex items-center justify-center text-[#111816]/40 mb-3"><SemanticIcon concept="bot" size="feature" /></div><h3 className="text-[15px] font-semibold text-[#111816] mb-1">No bots registered yet.</h3><p className="text-[14px] text-[#111816]/60 mb-4 max-w-sm">Backend-built trusted bots can be registered here before they are deployed to Businesses.</p><button type="button" onClick={onRegister} className="h-9 px-4 bg-white border border-[#111816]/10 shadow-sm text-[#111816] rounded-[6px] text-[13px] font-semibold hover:bg-[#F7F9F8] transition-colors cursor-pointer">Register bot</button></div></td></tr>;
+}
+
+function CatalogueRow({ definition, onAddVersion }: { readonly definition: PlatformBotCatalogueDefinition; readonly onAddVersion: () => void }) {
   const availableVersions = definition.versions.filter((version) => version.status === 'PUBLISHED');
   const latestVersion = availableVersions[0];
-  return <tr className="hover:bg-[#F7F9F8] transition-colors"><td className="px-5 py-4 align-top"><div className="font-semibold text-[#111816] text-[14px]">{definition.name}</div>{latestVersion !== undefined && <div className="text-[12px] text-[#111816]/40 font-mono mt-0.5">{latestVersion.implementationKey}</div>}</td><td className="px-5 py-4 align-top"><div className="text-[13px] text-[#111816]/70 max-w-md">{definition.description ?? '—'}</div></td><td className="px-5 py-4 align-top"><div className="flex gap-1 flex-wrap">{availableVersions.map((version) => <span key={version.id} className="text-[11px] font-mono bg-[#111816]/5 text-[#111816]/70 px-1.5 py-0.5 rounded-[4px]">{version.version}</span>)}{availableVersions.length === 0 && <span className="text-[13px] text-[#111816]/40">None</span>}</div></td><td className="px-5 py-4 align-top"><span className="text-[13px] font-medium text-[#111816]">{latestVersion?.version ?? '—'}</span></td><td className="px-5 py-4 align-top"><span className={`inline-flex items-center text-[11px] font-bold tracking-wide ${definition.status === 'ACTIVE' ? 'text-green-700' : 'text-[#111816]/50'}`}>{definition.status}</span></td></tr>;
+  const actionTriggerRef = useRef<HTMLButtonElement>(null);
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const closeMenuAndRun = (action: () => void) => {
+    setIsActionMenuOpen(false);
+    action();
+  };
+
+  return <tr className="hover:bg-[#F7F9F8] transition-colors"><td className="px-5 py-4 align-top"><div className="font-semibold text-[#111816] text-[14px]">{definition.name}</div>{latestVersion !== undefined && <div className="text-[12px] text-[#111816]/40 font-mono mt-0.5">{latestVersion.implementationKey}</div>}</td><td className="px-5 py-4 align-top"><div className="text-[13px] text-[#111816]/70 max-w-md">{definition.description ?? 'â€”'}</div></td><td className="px-5 py-4 align-top"><div className="flex gap-1 flex-wrap">{availableVersions.map((version) => <span key={version.id} className="text-[11px] font-mono bg-[#111816]/5 text-[#111816]/70 px-1.5 py-0.5 rounded-[4px]">{version.version}</span>)}{availableVersions.length === 0 && <span className="text-[13px] text-[#111816]/40">None</span>}</div></td><td className="px-5 py-4 align-top"><span className="text-[13px] font-medium text-[#111816]">{latestVersion?.version ?? 'â€”'}</span></td><td className="px-5 py-4 align-top"><span className={`inline-flex items-center text-[11px] font-bold tracking-wide ${definition.status === 'ACTIVE' ? 'text-green-700' : 'text-[#111816]/50'}`}>{definition.status}</span></td><td className="px-5 py-4 align-top text-right"><button ref={actionTriggerRef} type="button" aria-label={`Actions for ${definition.name}`} aria-expanded={isActionMenuOpen} onClick={() => setIsActionMenuOpen((isOpen) => !isOpen)} className="w-8 h-8 rounded-[6px] inline-flex items-center justify-center text-[#111816]/50 hover:bg-[#111816]/5 hover:text-[#111816] transition-colors focus:outline-none cursor-pointer"><SemanticIcon concept="menuHorizontal" size="control" /></button><PortalMenu isOpen={isActionMenuOpen} onClose={() => setIsActionMenuOpen(false)} triggerRef={actionTriggerRef} placement="bottom-end" className="!w-48 !rounded-[8px] !p-1"><button type="button" onClick={() => closeMenuAndRun(onAddVersion)} className="w-full text-left px-4 py-2 text-[13px] text-[#111816] hover:bg-[#F7F9F8] transition-colors cursor-pointer">Add version</button></PortalMenu></td></tr>;
 }
 
 function DeployBotModal({ businesses, businessesState, definitions, catalogueState, initialBusinessId, onClose, onCreated }: { readonly businesses: readonly PlatformBusinessListItem[]; readonly businessesState: LoadState; readonly definitions: readonly PlatformBotCatalogueDefinition[]; readonly catalogueState: LoadState; readonly initialBusinessId: string | undefined; readonly onClose: () => void; readonly onCreated: () => void }) {
@@ -232,11 +269,11 @@ function DeployBotModal({ businesses, businessesState, definitions, catalogueSta
     return '';
   });
   const [prevBusinessesState, setPrevBusinessesState] = useState(businessesState);
-  
+
   const [businessDetail, setBusinessDetail] = useState<PlatformBusinessDetail>();
   const [detailState, setDetailState] = useState<LoadState | 'idle'>('idle');
   const [loadedBusinessId, setLoadedBusinessId] = useState('');
-  
+
   const [botId, setBotId] = useState('');
   const [botVersionId, setBotVersionId] = useState('');
   const [submissionError, setSubmissionError] = useState<string>();
@@ -288,17 +325,225 @@ function DeployBotModal({ businesses, businessesState, definitions, catalogueSta
     onClose();
   };
 
-  return <><div className="fixed inset-0 bg-[#111816]/20 backdrop-blur-sm z-40 transition-opacity" onClick={onClose} /><div role="dialog" aria-modal="true" aria-labelledby="deploy-bot-title" className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[500px] bg-white rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col max-h-[90vh]"><div className="px-6 py-4 border-b border-[#111816]/10 flex items-center justify-between bg-white shrink-0"><h2 id="deploy-bot-title" className="text-[18px] font-bold text-[#111816]">Deploy trusted bot</h2><button type="button" onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-[#111816]/40 hover:text-[#111816] hover:bg-[#F7F9F8] transition-colors cursor-pointer focus:outline-none"><SemanticIcon concept="close" size="control" /></button></div><div className="p-6 overflow-y-auto flex-1">{submissionError !== undefined && <Alert kind="error" className="mb-5">{submissionError}</Alert>}{step === 1 ? <div className="space-y-5"><div><label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-business">Business</label><select id="bot-business" className="w-full h-10 px-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D] cursor-pointer disabled:opacity-50" value={businessId} onChange={(event) => { setBusinessId(event.target.value); setBotId(''); setBotVersionId(''); setSubmissionError(undefined); }} disabled={businessesState !== 'ready'}><option value="" disabled>{businessesState === 'loading' ? 'Loading Businesses…' : 'Select a Business'}</option>{businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select>{businessesState === 'error' && <p className="mt-1.5 text-[12px] text-[#B44735]">Unable to load Businesses.</p>}</div><div><label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-whatsapp">WhatsApp connection</label><select id="bot-whatsapp" className="w-full h-10 px-3 bg-[#F7F9F8] border border-[#111816]/10 rounded-[6px] text-[14px] text-[#111816]/50 focus:outline-none cursor-not-allowed" value={connectionEligible ? connection?.id ?? '' : ''} disabled><option value="" disabled>{businessId === '' ? 'Select a Business first' : detailState === 'loading' ? 'Loading connection…' : 'No eligible connection'}</option>{connectionEligible && connection !== undefined && <option value={connection.id}>{connection.displayPhoneNumber ?? 'Connected WhatsApp'} · {connection.status} · {connection.verificationStatus}</option>}</select>{businessId !== '' && detailState === 'ready' && !connectionEligible && <p className="mt-1.5 text-[12px] text-[#111816]/50">{connection === undefined ? 'This Business does not have an eligible WhatsApp connection.' : `WhatsApp is ${connection.status}${connection.verificationStatus === null ? '' : ` · ${connection.verificationStatus}`}.`}</p>}{detailState === 'error' && <p className="mt-1.5 text-[12px] text-[#B44735]">Unable to load this Business’s WhatsApp connection.</p>}</div><div className="pt-4 border-t border-[#111816]/5"><label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-definition">Bot</label><select id="bot-definition" className="w-full h-10 px-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D] cursor-pointer disabled:bg-[#F7F9F8] disabled:text-[#111816]/50 disabled:cursor-not-allowed" value={botId} onChange={(event) => { setBotId(event.target.value); setBotVersionId(''); }} disabled={!connectionEligible || catalogueState !== 'ready'}><option value="" disabled>{catalogueState === 'loading' ? 'Loading trusted bots…' : 'Select a trusted bot'}</option>{deployableDefinitions.map((definition) => <option key={definition.id} value={definition.id}>{definition.name}</option>)}</select>{catalogueState === 'error' && <p className="mt-1.5 text-[12px] text-[#B44735]">Unable to load trusted bots.</p>}</div><div><label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-version">Version</label><select id="bot-version" className="w-full h-10 px-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D] cursor-pointer disabled:bg-[#F7F9F8] disabled:text-[#111816]/50 disabled:cursor-not-allowed" value={botVersionId} onChange={(event) => setBotVersionId(event.target.value)} disabled={selectedBot === undefined}><option value="" disabled>Select a version</option>{versions.map((version) => <option key={version.id} value={version.id}>{version.version}</option>)}</select></div></div> : <Review selectedBusiness={selectedBusiness} connection={connection} selectedBot={selectedBot} selectedVersion={selectedVersion} />}</div><div className="px-6 py-4 border-t border-[#111816]/10 bg-[#F7F9F8]/50 flex justify-end gap-3 shrink-0">{step === 1 ? <><button type="button" onClick={onClose} className="h-10 px-4 bg-white border border-[#111816]/20 rounded-[6px] text-[13px] font-semibold text-[#111816] hover:bg-[#F7F9F8] transition-colors cursor-pointer">Cancel</button><button type="button" onClick={() => setStep(2)} disabled={!canReview} className="h-10 px-5 bg-[#003B2D] text-white rounded-[6px] text-[13px] font-semibold hover:bg-[#002B21] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Continue to review</button></> : <><button type="button" onClick={() => setStep(1)} disabled={isSubmitting} className="h-10 px-4 bg-white border border-[#111816]/20 rounded-[6px] text-[13px] font-semibold text-[#111816] hover:bg-[#F7F9F8] transition-colors cursor-pointer disabled:opacity-50">Back</button><button type="button" onClick={() => { void deploy(); }} disabled={isSubmitting} className="h-10 px-5 bg-[#003B2D] text-white rounded-[6px] text-[13px] font-semibold hover:bg-[#002B21] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">{isSubmitting ? 'Deploying…' : 'Deploy bot'}</button></>}</div></div></>;
+  return <><div className="fixed inset-0 bg-[#111816]/20 backdrop-blur-sm z-40 transition-opacity" onClick={onClose} /><div role="dialog" aria-modal="true" aria-labelledby="deploy-bot-title" className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[500px] bg-white rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col max-h-[90vh]"><div className="px-6 py-4 border-b border-[#111816]/10 flex items-center justify-between bg-white shrink-0"><h2 id="deploy-bot-title" className="text-[18px] font-bold text-[#111816]">Deploy trusted bot</h2><button type="button" onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-[#111816]/40 hover:text-[#111816] hover:bg-[#F7F9F8] transition-colors cursor-pointer focus:outline-none"><SemanticIcon concept="close" size="control" /></button></div><div className="p-6 overflow-y-auto flex-1">{submissionError !== undefined && <Alert kind="error" className="mb-5">{submissionError}</Alert>}{step === 1 ? <div className="space-y-5"><div><label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-business">Business</label><select id="bot-business" className="w-full h-10 px-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D] cursor-pointer disabled:opacity-50" value={businessId} onChange={(event) => { setBusinessId(event.target.value); setBotId(''); setBotVersionId(''); setSubmissionError(undefined); }} disabled={businessesState !== 'ready'}><option value="" disabled>{businessesState === 'loading' ? 'Loading Businessesâ€¦' : 'Select a Business'}</option>{businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select>{businessesState === 'error' && <p className="mt-1.5 text-[12px] text-[#B44735]">Unable to load Businesses.</p>}</div><div><label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-whatsapp">WhatsApp connection</label><select id="bot-whatsapp" className="w-full h-10 px-3 bg-[#F7F9F8] border border-[#111816]/10 rounded-[6px] text-[14px] text-[#111816]/50 focus:outline-none cursor-not-allowed" value={connectionEligible ? connection?.id ?? '' : ''} disabled><option value="" disabled>{businessId === '' ? 'Select a Business first' : detailState === 'loading' ? 'Loading connectionâ€¦' : 'No eligible connection'}</option>{connectionEligible && connection !== undefined && <option value={connection.id}>{connection.displayPhoneNumber ?? 'Connected WhatsApp'} Â· {connection.status} Â· {connection.verificationStatus}</option>}</select>{businessId !== '' && detailState === 'ready' && !connectionEligible && <p className="mt-1.5 text-[12px] text-[#111816]/50">{connection === undefined ? 'This Business does not have an eligible WhatsApp connection.' : `WhatsApp is ${connection.status}${connection.verificationStatus === null ? '' : ` Â· ${connection.verificationStatus}`}.`}</p>}{detailState === 'error' && <p className="mt-1.5 text-[12px] text-[#B44735]">Unable to load this Businessâ€™s WhatsApp connection.</p>}</div><div className="pt-4 border-t border-[#111816]/5"><label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-definition">Bot</label><select id="bot-definition" className="w-full h-10 px-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D] cursor-pointer disabled:bg-[#F7F9F8] disabled:text-[#111816]/50 disabled:cursor-not-allowed" value={botId} onChange={(event) => { setBotId(event.target.value); setBotVersionId(''); }} disabled={!connectionEligible || catalogueState !== 'ready'}><option value="" disabled>{catalogueState === 'loading' ? 'Loading trusted botsâ€¦' : 'Select a trusted bot'}</option>{deployableDefinitions.map((definition) => <option key={definition.id} value={definition.id}>{definition.name}</option>)}</select>{catalogueState === 'error' && <p className="mt-1.5 text-[12px] text-[#B44735]">Unable to load trusted bots.</p>}</div><div><label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-version">Version</label><select id="bot-version" className="w-full h-10 px-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D] cursor-pointer disabled:bg-[#F7F9F8] disabled:text-[#111816]/50 disabled:cursor-not-allowed" value={botVersionId} onChange={(event) => setBotVersionId(event.target.value)} disabled={selectedBot === undefined}><option value="" disabled>Select a version</option>{versions.map((version) => <option key={version.id} value={version.id}>{version.version}</option>)}</select></div></div> : <Review selectedBusiness={selectedBusiness} connection={connection} selectedBot={selectedBot} selectedVersion={selectedVersion} />}</div><div className="px-6 py-4 border-t border-[#111816]/10 bg-[#F7F9F8]/50 flex justify-end gap-3 shrink-0">{step === 1 ? <><button type="button" onClick={onClose} className="h-10 px-4 bg-white border border-[#111816]/20 rounded-[6px] text-[13px] font-semibold text-[#111816] hover:bg-[#F7F9F8] transition-colors cursor-pointer">Cancel</button><button type="button" onClick={() => setStep(2)} disabled={!canReview} className="h-10 px-5 bg-[#003B2D] text-white rounded-[6px] text-[13px] font-semibold hover:bg-[#002B21] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Continue to review</button></> : <><button type="button" onClick={() => setStep(1)} disabled={isSubmitting} className="h-10 px-4 bg-white border border-[#111816]/20 rounded-[6px] text-[13px] font-semibold text-[#111816] hover:bg-[#F7F9F8] transition-colors cursor-pointer disabled:opacity-50">Back</button><button type="button" onClick={() => { void deploy(); }} disabled={isSubmitting} className="h-10 px-5 bg-[#003B2D] text-white rounded-[6px] text-[13px] font-semibold hover:bg-[#002B21] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">{isSubmitting ? 'Deployingâ€¦' : 'Deploy bot'}</button></>}</div></div></>;
 }
 
-function Review({ selectedBusiness, connection, selectedBot, selectedVersion }: { readonly selectedBusiness: PlatformBusinessListItem | undefined; readonly connection: PlatformBusinessDetail['whatsappConnection'] | undefined; readonly selectedBot: PlatformBotCatalogueDefinition | undefined; readonly selectedVersion: PlatformBotCatalogueVersion | undefined }) { return <div className="space-y-6"><div className="bg-[#F7F9F8] rounded-[8px] border border-[#111816]/5 p-4 space-y-3"><ReviewRow label="Business" value={selectedBusiness?.name ?? '—'} /><ReviewRow label="WhatsApp number" value={connection?.displayPhoneNumber ?? 'Connected WhatsApp'} /><ReviewRow label="Bot" value={selectedBot?.name ?? '—'} /><ReviewRow label="Version" value={selectedVersion?.version ?? '—'} mono /></div><div className="bg-[#003B2D]/5 border border-[#003B2D]/10 rounded-[8px] p-4 flex items-start gap-3"><div className="w-5 h-5 rounded-full bg-white flex items-center justify-center shrink-0 mt-0.5 text-[#003B2D]"><SemanticIcon concept="alert" size="metadata" className="w-3 h-3" /></div><div><h4 className="text-[13px] font-semibold text-[#111816] mb-1">Initial deployment: Inactive</h4><p className="text-[12px] text-[#111816]/70 leading-relaxed">Initial publication: Not live. The deployment can be activated after creation. Publishing it live is a separate action.</p></div></div></div>; }
+function Review({ selectedBusiness, connection, selectedBot, selectedVersion }: { readonly selectedBusiness: PlatformBusinessListItem | undefined; readonly connection: PlatformBusinessDetail['whatsappConnection'] | undefined; readonly selectedBot: PlatformBotCatalogueDefinition | undefined; readonly selectedVersion: PlatformBotCatalogueVersion | undefined }) { return <div className="space-y-6"><div className="bg-[#F7F9F8] rounded-[8px] border border-[#111816]/5 p-4 space-y-3"><ReviewRow label="Business" value={selectedBusiness?.name ?? 'â€”'} /><ReviewRow label="WhatsApp number" value={connection?.displayPhoneNumber ?? 'Connected WhatsApp'} /><ReviewRow label="Bot" value={selectedBot?.name ?? 'â€”'} /><ReviewRow label="Version" value={selectedVersion?.version ?? 'â€”'} mono /></div><div className="bg-[#003B2D]/5 border border-[#003B2D]/10 rounded-[8px] p-4 flex items-start gap-3"><div className="w-5 h-5 rounded-full bg-white flex items-center justify-center shrink-0 mt-0.5 text-[#003B2D]"><SemanticIcon concept="alert" size="metadata" className="w-3 h-3" /></div><div><h4 className="text-[13px] font-semibold text-[#111816] mb-1">Initial deployment: Inactive</h4><p className="text-[12px] text-[#111816]/70 leading-relaxed">Initial publication: Not live. The deployment can be activated after creation. Publishing it live is a separate action.</p></div></div></div>; }
 function ReviewRow({ label, value, mono = false }: { readonly label: string; readonly value: string; readonly mono?: boolean }) { return <div className="flex justify-between items-start gap-6"><span className="text-[13px] text-[#111816]/60">{label}</span><span className={`text-right ${mono ? 'text-[13px] font-mono bg-white px-1.5 py-0.5 rounded-[4px] border border-[#111816]/10' : 'text-[14px] font-medium text-[#111816]'}`}>{value}</span></div>; }
 
 function PublicationConfirmationDialog({ action, pending, onCancel, onConfirm }: { readonly action: PublicationAction; readonly pending: boolean; readonly onCancel: () => void; readonly onConfirm: () => void }) {
   const isPublish = action === 'publish';
-  return <><div className="fixed inset-0 bg-[#111816]/20 backdrop-blur-sm z-[60]" onClick={pending ? undefined : onCancel} /><div role="dialog" aria-modal="true" aria-labelledby="publication-title" className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[420px] bg-white rounded-2xl shadow-xl z-[70] overflow-hidden"><div className="p-6"><h2 id="publication-title" className="text-[18px] font-bold text-[#111816]">{isPublish ? 'Publish bot?' : 'Unpublish bot?'}</h2><p className="mt-2 text-[14px] leading-relaxed text-[#111816]/70">{isPublish ? 'Once published, this bot can respond to inbound WhatsApp messages for this Business.' : 'Live bot responses will stop for this Business. The deployment will remain available for management and preview.'}</p></div><div className="px-6 py-4 border-t border-[#111816]/10 bg-[#F7F9F8]/50 flex justify-end gap-3"><button type="button" disabled={pending} onClick={onCancel} className="h-10 px-4 bg-white border border-[#111816]/20 rounded-[6px] text-[13px] font-semibold text-[#111816] hover:bg-[#F7F9F8] disabled:opacity-50">Cancel</button><button type="button" disabled={pending} onClick={onConfirm} className="h-10 px-5 bg-[#003B2D] text-white rounded-[6px] text-[13px] font-semibold hover:bg-[#002B21] disabled:opacity-50">{pending ? 'Saving…' : isPublish ? 'Publish bot' : 'Unpublish bot'}</button></div></div></>;
+  return <><div className="fixed inset-0 bg-[#111816]/20 backdrop-blur-sm z-[60]" onClick={pending ? undefined : onCancel} /><div role="dialog" aria-modal="true" aria-labelledby="publication-title" className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[420px] bg-white rounded-2xl shadow-xl z-[70] overflow-hidden"><div className="p-6"><h2 id="publication-title" className="text-[18px] font-bold text-[#111816]">{isPublish ? 'Publish bot?' : 'Unpublish bot?'}</h2><p className="mt-2 text-[14px] leading-relaxed text-[#111816]/70">{isPublish ? 'Once published, this bot can respond to inbound WhatsApp messages for this Business.' : 'Live bot responses will stop for this Business. The deployment will remain available for management and preview.'}</p></div><div className="px-6 py-4 border-t border-[#111816]/10 bg-[#F7F9F8]/50 flex justify-end gap-3"><button type="button" disabled={pending} onClick={onCancel} className="h-10 px-4 bg-white border border-[#111816]/20 rounded-[6px] text-[13px] font-semibold text-[#111816] hover:bg-[#F7F9F8] disabled:opacity-50">Cancel</button><button type="button" disabled={pending} onClick={onConfirm} className="h-10 px-5 bg-[#003B2D] text-white rounded-[6px] text-[13px] font-semibold hover:bg-[#002B21] disabled:opacity-50">{pending ? 'Savingâ€¦' : isPublish ? 'Publish bot' : 'Unpublish bot'}</button></div></div></>;
 }
 
-function connectionLabel(deployment: PlatformBotDeployment): string { const verification = deployment.whatsappConnection.verificationStatus; return verification === null ? deployment.whatsappConnection.status : `${deployment.whatsappConnection.status} · ${verification}`; }
+function connectionLabel(deployment: PlatformBotDeployment): string { const verification = deployment.whatsappConnection.verificationStatus; return verification === null ? deployment.whatsappConnection.status : `${deployment.whatsappConnection.status} Â· ${verification}`; }
 function formatDate(value: string): string { return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value)); }
 function mutationErrorMessage(issue: Exclude<PlatformBotMutationResult, { readonly ok: true }>['issue']): string { if (issue === 'INVALID') return 'The requested bot deployment details are invalid.'; if (issue === 'NOT_FOUND') return 'The requested deployment is no longer available.'; if (issue === 'CONFLICT') return 'This deployment cannot make that transition right now.'; if (issue === 'FORBIDDEN') return 'Your platform role does not allow this action.'; return 'The bot administration service is temporarily unavailable. Please try again.'; }
+function RegisterBotModal({ onClose, onCreated, onPartialSuccessClose }: { readonly onClose: () => void; readonly onCreated: () => void; readonly onPartialSuccessClose: () => void }) {
+  const [implementations, setImplementations] = useState<readonly PlatformTrustedImplementation[]>([]);
+  const [implementationsState, setImplementationsState] = useState<LoadState>('loading');
+  const [name, setName] = useState('');
+  const [definitionKey, setDefinitionKey] = useState('');
+  const [hasManuallyEditedKey, setHasManuallyEditedKey] = useState(false);
+  const [description, setDescription] = useState('');
+  const [version, setVersion] = useState('');
+  const [implementationKey, setImplementationKey] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string>();
+  const [createdDefinitionId, setCreatedDefinitionId] = useState<string>();
+  const handleClose = () => createdDefinitionId !== undefined ? onPartialSuccessClose() : onClose();
+
+  useEffect(() => {
+    let active = true;
+    void listTrustedBotImplementations().then((result) => {
+      if (!active) return;
+      if (result.ok === false) {
+        setImplementationsState('error');
+      } else {
+        setImplementations(result.value);
+        setImplementationsState('ready');
+      }
+    });
+    return () => { active = false; };
+  }, []);
+
+  const handleNameChange = (newName: string) => {
+    setName(newName);
+    if (!hasManuallyEditedKey) {
+      setDefinitionKey(newName.toUpperCase().replace(/[^A-Z0-9_]/g, '_'));
+    }
+  };
+
+  const handleKeyChange = (newKey: string) => {
+    setDefinitionKey(newKey);
+    setHasManuallyEditedKey(true);
+  };
+
+  const submit = async () => {
+    setIsSubmitting(true);
+    setSubmissionError(undefined);
+
+    let currentDefId = createdDefinitionId;
+
+    if (currentDefId === undefined) {
+      const defResult = await createBotDefinition({ definitionKey, name, description: description.trim() === '' ? null : description });
+      if (defResult.ok === false) {
+        setIsSubmitting(false);
+        setSubmissionError(registrationErrorMessage(defResult.issue, defResult.code));
+        return;
+      }
+      currentDefId = defResult.definitionId;
+      setCreatedDefinitionId(currentDefId);
+    }
+
+    const versionResult = await createBotVersion(currentDefId, { version, implementationKey, configurationSchema: null });
+    setIsSubmitting(false);
+
+    if (versionResult.ok === false) {
+      setSubmissionError(`Bot definition was created, but version registration failed: ${registrationErrorMessage(versionResult.issue, versionResult.code)}`);
+      return;
+    }
+
+    onCreated();
+    onClose();
+  };
+
+  const canSubmit = name.trim() !== '' && definitionKey.trim() !== '' && version.trim() !== '' && implementationKey !== '' && implementationsState === 'ready' && implementations.length > 0;
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-[#111816]/20 backdrop-blur-sm z-40 transition-opacity" onClick={handleClose} />
+      <div role="dialog" aria-modal="true" aria-labelledby="register-bot-title" className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[500px] bg-white rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="px-6 py-4 border-b border-[#111816]/10 flex items-center justify-between bg-white shrink-0">
+          <h2 id="register-bot-title" className="text-[18px] font-bold text-[#111816]">Register bot</h2>
+          <button type="button" onClick={handleClose} className="w-8 h-8 rounded-full flex items-center justify-center text-[#111816]/40 hover:text-[#111816] hover:bg-[#F7F9F8] transition-colors cursor-pointer focus:outline-none"><SemanticIcon concept="close" size="control" /></button>
+        </div>
+        <div className="p-6 overflow-y-auto flex-1">
+          {submissionError !== undefined && <Alert kind="error" className="mb-5">{submissionError}</Alert>}
+          <div className="space-y-5">
+            <div>
+              <label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-name">Bot name</label>
+              <input id="bot-name" type="text" className="w-full h-10 px-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D]" value={name} onChange={(e) => handleNameChange(e.target.value)} disabled={createdDefinitionId !== undefined} maxLength={160} placeholder="e.g. Handover Test" />
+            </div>
+            <div>
+              <label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-definition-key">Definition key</label>
+              <input id="bot-definition-key" type="text" className="w-full h-10 px-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D] font-mono uppercase" value={definitionKey} onChange={(e) => handleKeyChange(e.target.value.toUpperCase())} disabled={createdDefinitionId !== undefined} maxLength={120} placeholder="HANDOVER_TEST" />
+              <p className="mt-1.5 text-[12px] text-[#111816]/50">Must start with a letter and contain only uppercase letters, numbers, and underscores (e.g. HANDOVER_TEST).</p>
+            </div>
+            <div>
+              <label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-description">Description</label>
+              <textarea id="bot-description" className="w-full p-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D] min-h-[80px]" value={description} onChange={(e) => setDescription(e.target.value)} disabled={createdDefinitionId !== undefined} maxLength={1000} placeholder="Optional description of this bot's purpose." />
+            </div>
+            <div className="pt-4 border-t border-[#111816]/5">
+              <label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-version">Version</label>
+              <input id="bot-version" type="text" className="w-full h-10 px-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D] font-mono" value={version} onChange={(e) => setVersion(e.target.value)} maxLength={32} placeholder="v1" />
+              <p className="mt-1.5 text-[12px] text-[#111816]/50">e.g. v1, 1.0. Cannot contain spaces.</p>
+            </div>
+            <div>
+              <label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="bot-implementation">Trusted implementation</label>
+              <select id="bot-implementation" className="w-full h-10 px-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D] cursor-pointer disabled:bg-[#F7F9F8] disabled:text-[#111816]/50 disabled:cursor-not-allowed" value={implementationKey} onChange={(event) => setImplementationKey(event.target.value)} disabled={implementationsState !== 'ready' || implementations.length === 0}>
+                <option value="" disabled>{implementationsState === 'loading' ? 'Loading trusted implementationsâ€¦' : implementations.length === 0 ? 'No trusted implementations available' : 'Select an implementation'}</option>
+                {implementations.map((impl) => <option key={impl.implementationKey} value={impl.implementationKey}>{impl.implementationKey}</option>)}
+              </select>
+              {implementationsState === 'error' && <p className="mt-1.5 text-[12px] text-[#B44735]">Unable to load trusted implementations.</p>}
+              {implementationsState === 'ready' && implementations.length === 0 && <p className="mt-1.5 text-[12px] text-[#B44735]">No trusted bot implementations are available in this deployment.</p>}
+            </div>
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t border-[#111816]/10 bg-[#F7F9F8]/50 flex justify-end gap-3 shrink-0">
+          <button type="button" onClick={handleClose} className="h-10 px-4 bg-white border border-[#111816]/20 rounded-[6px] text-[13px] font-semibold text-[#111816] hover:bg-[#F7F9F8] transition-colors cursor-pointer" disabled={isSubmitting}>Cancel</button>
+          <button type="button" onClick={() => { void submit(); }} disabled={!canSubmit || isSubmitting} className="h-10 px-5 bg-[#003B2D] text-white rounded-[6px] text-[13px] font-semibold hover:bg-[#002B21] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">{isSubmitting ? 'Registeringâ€¦' : createdDefinitionId !== undefined ? 'Retry version' : 'Register bot'}</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function AddVersionModal({ definition, onClose, onCreated }: { readonly definition: PlatformBotCatalogueDefinition; readonly onClose: () => void; readonly onCreated: () => void }) {
+  const [implementations, setImplementations] = useState<readonly PlatformTrustedImplementation[]>([]);
+  const [implementationsState, setImplementationsState] = useState<LoadState>('loading');
+  const [version, setVersion] = useState('');
+  const [implementationKey, setImplementationKey] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string>();
+
+  useEffect(() => {
+    let active = true;
+    void listTrustedBotImplementations().then((result) => {
+      if (!active) return;
+      if (result.ok === false) {
+        setImplementationsState('error');
+      } else {
+        setImplementations(result.value);
+        setImplementationsState('ready');
+      }
+    });
+    return () => { active = false; };
+  }, []);
+
+  const submit = async () => {
+    setIsSubmitting(true);
+    setSubmissionError(undefined);
+
+    const versionResult = await createBotVersion(definition.id, { version, implementationKey, configurationSchema: null });
+    setIsSubmitting(false);
+
+    if (versionResult.ok === false) {
+      setSubmissionError(registrationErrorMessage(versionResult.issue, versionResult.code));
+      return;
+    }
+
+    onCreated();
+    onClose();
+  };
+
+  const canSubmit = version.trim() !== '' && implementationKey !== '' && implementationsState === 'ready' && implementations.length > 0;
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-[#111816]/20 backdrop-blur-sm z-40 transition-opacity" onClick={onClose} />
+      <div role="dialog" aria-modal="true" aria-labelledby="add-version-title" className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[500px] bg-white rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="px-6 py-4 border-b border-[#111816]/10 flex items-center justify-between bg-white shrink-0">
+          <h2 id="add-version-title" className="text-[18px] font-bold text-[#111816]">Add version</h2>
+          <button type="button" onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-[#111816]/40 hover:text-[#111816] hover:bg-[#F7F9F8] transition-colors cursor-pointer focus:outline-none"><SemanticIcon concept="close" size="control" /></button>
+        </div>
+        <div className="p-6 overflow-y-auto flex-1">
+          {submissionError !== undefined && <Alert kind="error" className="mb-5">{submissionError}</Alert>}
+          <div className="space-y-5">
+            <div>
+              <label className="block text-[13px] font-semibold text-[#111816] mb-1.5">Bot</label>
+              <div className="px-3 py-2 bg-[#F7F9F8] border border-[#111816]/10 rounded-[6px]">
+                <div className="text-[14px] font-medium text-[#111816]">{definition.name}</div>
+                <div className="text-[12px] font-mono text-[#111816]/50 mt-0.5" title={definition.id}>{definition.id.split('-')[0]}...</div>
+              </div>
+            </div>
+            <div className="pt-4 border-t border-[#111816]/5">
+              <label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="add-version">Version</label>
+              <input id="add-version" type="text" className="w-full h-10 px-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D] font-mono" value={version} onChange={(e) => setVersion(e.target.value)} maxLength={32} placeholder="v2" />
+            </div>
+            <div>
+              <label className="block text-[13px] font-semibold text-[#111816] mb-1.5" htmlFor="add-implementation">Trusted implementation</label>
+              <select id="add-implementation" className="w-full h-10 px-3 bg-white border border-[#111816]/20 rounded-[6px] text-[14px] text-[#111816] focus:outline-none focus:border-[#003B2D] focus:ring-1 focus:ring-[#003B2D] cursor-pointer disabled:bg-[#F7F9F8] disabled:text-[#111816]/50 disabled:cursor-not-allowed" value={implementationKey} onChange={(event) => setImplementationKey(event.target.value)} disabled={implementationsState !== 'ready' || implementations.length === 0}>
+                <option value="" disabled>{implementationsState === 'loading' ? 'Loading trusted implementationsâ€¦' : implementations.length === 0 ? 'No trusted implementations available' : 'Select an implementation'}</option>
+                {implementations.map((impl) => <option key={impl.implementationKey} value={impl.implementationKey}>{impl.implementationKey}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t border-[#111816]/10 bg-[#F7F9F8]/50 flex justify-end gap-3 shrink-0">
+          <button type="button" onClick={onClose} className="h-10 px-4 bg-white border border-[#111816]/20 rounded-[6px] text-[13px] font-semibold text-[#111816] hover:bg-[#F7F9F8] transition-colors cursor-pointer" disabled={isSubmitting}>Cancel</button>
+          <button type="button" onClick={() => { void submit(); }} disabled={!canSubmit || isSubmitting} className="h-10 px-5 bg-[#003B2D] text-white rounded-[6px] text-[13px] font-semibold hover:bg-[#002B21] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">{isSubmitting ? 'Addingâ€¦' : 'Add version'}</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function registrationErrorMessage(issue: string, code: string | undefined): string {
+  if (code === 'BOT_DEFINITION_KEY_EXISTS') return 'A bot with this definition key already exists.';
+  if (code === 'BOT_VERSION_EXISTS') return 'This version already exists for the selected bot.';
+  if (code === 'BOT_DEFINITION_NOT_FOUND') return 'The bot definition could not be found.';
+  if (issue === 'INVALID') return 'The provided bot registration details are invalid.';
+  if (issue === 'FORBIDDEN') return 'Your platform role does not allow registering bots.';
+  return 'We couldn\'t register the bot. Please try again.';
+}

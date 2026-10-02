@@ -23,6 +23,12 @@ export class BotDeploymentAdminController {
     return this.bots.listCatalogue();
   }
 
+  @Get('trusted-implementations')
+  @RequirePlatformPermission('platform.operations.read')
+  listTrustedImplementations(): ReturnType<BotDeploymentService['listTrustedImplementations']> {
+    return this.bots.listTrustedImplementations();
+  }
+
   @Get('deployments')
   @RequirePlatformPermission('platform.operations.read')
   listDeployments(

@@ -88,6 +88,18 @@ export type PlatformBotMutationResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly issue: PlatformBotRequestIssue; readonly requestId: string | undefined };
 
+export type PlatformBotDefinitionCreationResult =
+  | { readonly ok: true; readonly definitionId: string }
+  | { readonly ok: false; readonly issue: PlatformBotRequestIssue; readonly code: string | undefined; readonly requestId: string | undefined };
+
+export type PlatformBotVersionCreationResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly issue: PlatformBotRequestIssue; readonly code: string | undefined; readonly requestId: string | undefined };
+
+export interface PlatformTrustedImplementation {
+  readonly implementationKey: string;
+}
+
 export async function listBotCatalogue(
   fetcher: PlatformAdminFetch = fetch,
   apiBaseUrl = configuredApiBaseUrl(),
@@ -160,6 +172,84 @@ export function publishBotDeployment(deploymentId: string, fetcher: PlatformAdmi
 
 export function unpublishBotDeployment(deploymentId: string, fetcher: PlatformAdminFetch = fetch, apiBaseUrl = configuredApiBaseUrl()): Promise<PlatformBotMutationResult> {
   return mutateBotAdministration(`/admin/bots/deployments/${encodeURIComponent(deploymentId)}/unpublish`, { method: 'POST' }, fetcher, apiBaseUrl);
+}
+
+export async function listTrustedBotImplementations(
+  fetcher: PlatformAdminFetch = fetch,
+  apiBaseUrl = configuredApiBaseUrl(),
+  signal?: AbortSignal,
+): Promise<PlatformBotReadResult<readonly PlatformTrustedImplementation[]>> {
+  try {
+    const response = await fetcher(`${apiBaseUrl}/admin/bots/trusted-implementations`, {
+      credentials: 'include',
+      cache: 'no-store',
+      signal,
+    });
+    if (!response.ok) return unavailable(response);
+    const payload: unknown = await response.json();
+    if (!isRecord(payload) || !Array.isArray(payload.implementations)) return unavailable(response);
+    const implementations: PlatformTrustedImplementation[] = [];
+    for (const item of payload.implementations) {
+      if (!isRecord(item) || !isNonEmptyString(item.implementationKey)) return unavailable(response);
+      implementations.push({ implementationKey: item.implementationKey });
+    }
+    return { ok: true, value: implementations };
+  } catch {
+    return { ok: false, issue: 'UNAVAILABLE', requestId: undefined };
+  }
+}
+
+export async function createBotDefinition(
+  input: { readonly definitionKey: string; readonly name: string; readonly description: string | null },
+  fetcher: PlatformAdminFetch = fetch,
+  apiBaseUrl = configuredApiBaseUrl(),
+): Promise<PlatformBotDefinitionCreationResult> {
+  try {
+    const csrfToken = await requestCsrfToken(fetcher, apiBaseUrl);
+    if (csrfToken === undefined) return { ok: false, issue: 'UNAVAILABLE', code: undefined, requestId: undefined };
+    const response = await fetcher(`${apiBaseUrl}/admin/bots/definitions`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'x-csrf-token': csrfToken, 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) {
+      const code = await extractErrorCode(response);
+      return { ok: false, issue: mutationIssue(response.status), code, requestId: requestIdFrom(response) };
+    }
+    const payload: unknown = await response.json();
+    if (!isRecord(payload) || !isRecord(payload.definition) || !isNonEmptyString(payload.definition.id)) {
+      return { ok: false, issue: 'UNAVAILABLE', code: undefined, requestId: requestIdFrom(response) };
+    }
+    return { ok: true, definitionId: payload.definition.id };
+  } catch {
+    return { ok: false, issue: 'UNAVAILABLE', code: undefined, requestId: undefined };
+  }
+}
+
+export async function createBotVersion(
+  botDefinitionId: string,
+  input: { readonly version: string; readonly implementationKey: string; readonly configurationSchema: null },
+  fetcher: PlatformAdminFetch = fetch,
+  apiBaseUrl = configuredApiBaseUrl(),
+): Promise<PlatformBotVersionCreationResult> {
+  try {
+    const csrfToken = await requestCsrfToken(fetcher, apiBaseUrl);
+    if (csrfToken === undefined) return { ok: false, issue: 'UNAVAILABLE', code: undefined, requestId: undefined };
+    const response = await fetcher(`${apiBaseUrl}/admin/bots/definitions/${encodeURIComponent(botDefinitionId)}/versions`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'x-csrf-token': csrfToken, 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) {
+      const code = await extractErrorCode(response);
+      return { ok: false, issue: mutationIssue(response.status), code, requestId: requestIdFrom(response) };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, issue: 'UNAVAILABLE', code: undefined, requestId: undefined };
+  }
 }
 
 async function mutateBotAdministration(
@@ -299,6 +389,15 @@ function mutationIssue(status: number): PlatformBotRequestIssue {
 function requestIdFrom(response: Response): string | undefined {
   const requestId = response.headers.get('x-request-id') ?? response.headers.get('x-correlation-id');
   return requestId === null || requestId.trim() === '' ? undefined : requestId;
+}
+
+async function extractErrorCode(response: Response): Promise<string | undefined> {
+  try {
+    const payload: unknown = await response.json();
+    return isRecord(payload) && isNonEmptyString(payload.code) ? payload.code : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

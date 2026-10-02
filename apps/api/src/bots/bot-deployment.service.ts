@@ -11,7 +11,7 @@ import type {
   PlatformBotDeploymentListItem,
 } from './bot-deployment.types.js';
 import type { PlatformAuthorizationContext } from '../platform-admin/platform-admin.types.js';
-import { isTrustedBotImplementationKey } from './trusted-bot-implementations.js';
+import { isTrustedBotImplementationKey, trustedBotImplementationKeys, type TrustedBotImplementationKey } from './trusted-bot-implementations.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const definitionKeyPattern = /^[A-Z][A-Z0-9_]{2,119}$/;
@@ -28,6 +28,10 @@ export class BotDeploymentService {
 
   async listCatalogue(): Promise<{ readonly definitions: readonly PlatformBotCatalogueDefinition[] }> {
     return { definitions: await this.repository.listCatalogue() };
+  }
+
+  listTrustedImplementations(): { readonly implementations: readonly { readonly implementationKey: TrustedBotImplementationKey }[] } {
+    return { implementations: trustedBotImplementationKeys.map((implementationKey) => ({ implementationKey })) };
   }
 
   async listDeployments(
