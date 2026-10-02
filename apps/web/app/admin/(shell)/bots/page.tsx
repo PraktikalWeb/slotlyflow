@@ -36,8 +36,13 @@ const deploymentPageSize = 100;
 export default function BotsAdminPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  
+  const deployAction = searchParams?.get('action') === 'deploy';
+  const requestedBusinessId = searchParams?.get('businessId') ?? undefined;
+
   const [activeTab, setActiveTab] = useState<TabType>('deployments');
-  const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
+  const [isDeployModalOpen, setIsDeployModalOpen] = useState(deployAction);
+  const [prevDeployAction, setPrevDeployAction] = useState(deployAction);
   const [catalogue, setCatalogue] = useState<readonly PlatformBotCatalogueDefinition[]>([]);
   const [catalogueState, setCatalogueState] = useState<LoadState>('loading');
   const [businesses, setBusinesses] = useState<readonly PlatformBusinessListItem[]>([]);
@@ -45,11 +50,21 @@ export default function BotsAdminPage() {
   const [deployments, setDeployments] = useState<readonly PlatformBotDeployment[]>([]);
   const [deploymentsState, setDeploymentsState] = useState<LoadState>('loading');
   const [feedback, setFeedback] = useState<{ readonly kind: 'success' | 'error'; readonly message: string }>();
+  const [lastCheckedBusinessId, setLastCheckedBusinessId] = useState<string>();
   const [mutatingDeploymentId, setMutatingDeploymentId] = useState<string>();
   const [publicationAction, setPublicationAction] = useState<{ readonly deployment: PlatformBotDeployment; readonly action: PublicationAction }>();
 
-  const deployAction = searchParams?.get('action') === 'deploy';
-  const requestedBusinessId = searchParams?.get('businessId') ?? undefined;
+  if (deployAction !== prevDeployAction) {
+    setPrevDeployAction(deployAction);
+    setIsDeployModalOpen(deployAction);
+  }
+
+  if (deployAction && requestedBusinessId !== undefined && businessesState === 'ready' && lastCheckedBusinessId !== requestedBusinessId) {
+    setLastCheckedBusinessId(requestedBusinessId);
+    if (!businesses.some((business) => business.id === requestedBusinessId)) {
+      setFeedback({ kind: 'error', message: 'The requested Business is unavailable.' });
+    }
+  }
 
   const refreshDeployments = useCallback(async () => {
     setDeploymentsState('loading');
@@ -61,6 +76,21 @@ export default function BotsAdminPage() {
     }
     setDeployments(result.value.deployments);
     setDeploymentsState('ready');
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void listBotDeployments({ page: 1, pageSize: deploymentPageSize }).then((result) => {
+      if (!active) return;
+      if (result.ok === false) {
+        setDeployments([]);
+        setDeploymentsState('error');
+      } else {
+        setDeployments(result.value.deployments);
+        setDeploymentsState('ready');
+      }
+    });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -92,13 +122,6 @@ export default function BotsAdminPage() {
     });
     return () => controller.abort();
   }, []);
-
-  useEffect(() => { void refreshDeployments(); }, [refreshDeployments]);
-  useEffect(() => { if (deployAction) setIsDeployModalOpen(true); }, [deployAction]);
-  useEffect(() => {
-    if (!deployAction || requestedBusinessId === undefined || businessesState !== 'ready') return;
-    if (!businesses.some((business) => business.id === requestedBusinessId)) setFeedback({ kind: 'error', message: 'The requested Business is unavailable.' });
-  }, [businesses, businessesState, deployAction, requestedBusinessId]);
 
   const closeDeployModal = () => {
     setIsDeployModalOpen(false);
@@ -202,20 +225,39 @@ function CatalogueRow({ definition }: { readonly definition: PlatformBotCatalogu
 
 function DeployBotModal({ businesses, businessesState, definitions, catalogueState, initialBusinessId, onClose, onCreated }: { readonly businesses: readonly PlatformBusinessListItem[]; readonly businessesState: LoadState; readonly definitions: readonly PlatformBotCatalogueDefinition[]; readonly catalogueState: LoadState; readonly initialBusinessId: string | undefined; readonly onClose: () => void; readonly onCreated: () => void }) {
   const [step, setStep] = useState<1 | 2>(1);
-  const [businessId, setBusinessId] = useState('');
+  const [businessId, setBusinessId] = useState(() => {
+    if (businessesState === 'ready' && initialBusinessId !== undefined && businesses.some((b) => b.id === initialBusinessId)) {
+      return initialBusinessId;
+    }
+    return '';
+  });
+  const [prevBusinessesState, setPrevBusinessesState] = useState(businessesState);
+  
   const [businessDetail, setBusinessDetail] = useState<PlatformBusinessDetail>();
   const [detailState, setDetailState] = useState<LoadState | 'idle'>('idle');
+  const [loadedBusinessId, setLoadedBusinessId] = useState('');
+  
   const [botId, setBotId] = useState('');
   const [botVersionId, setBotVersionId] = useState('');
   const [submissionError, setSubmissionError] = useState<string>();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => { if (initialBusinessId !== undefined && businessId === '' && businesses.some((business) => business.id === initialBusinessId)) setBusinessId(initialBusinessId); }, [businessId, businesses, initialBusinessId]);
-  useEffect(() => {
-    if (businessId === '') { setBusinessDetail(undefined); setDetailState('idle'); return; }
-    const controller = new AbortController();
+  if (businessesState !== prevBusinessesState) {
+    setPrevBusinessesState(businessesState);
+    if (businessesState === 'ready' && initialBusinessId !== undefined && businessId === '' && businesses.some((business) => business.id === initialBusinessId)) {
+      setBusinessId(initialBusinessId);
+    }
+  }
+
+  if (businessId !== loadedBusinessId) {
+    setLoadedBusinessId(businessId);
     setBusinessDetail(undefined);
-    setDetailState('loading');
+    setDetailState(businessId === '' ? 'idle' : 'loading');
+  }
+
+  useEffect(() => {
+    if (businessId === '') return;
+    const controller = new AbortController();
     void getPlatformBusinessDetail(businessId, fetch, undefined, controller.signal).then((result) => {
       if (controller.signal.aborted) return;
       if (result.status !== 'ready') { setDetailState('error'); return; }
@@ -224,6 +266,7 @@ function DeployBotModal({ businesses, businessesState, definitions, catalogueSta
     });
     return () => controller.abort();
   }, [businessId]);
+
 
   const selectedBusiness = businesses.find((business) => business.id === businessId);
   const connection = businessDetail?.whatsappConnection;
