@@ -175,6 +175,7 @@ export default function BotsAdminPage() {
 
   const activeCount = useMemo(() => deployments.filter((deployment) => deployment.status === 'ACTIVE').length, [deployments]);
   const liveCount = useMemo(() => deployments.filter((deployment) => deployment.publication.status === 'PUBLISHED').length, [deployments]);
+  const addingVersionDefinition = useMemo(() => catalogue.find((d) => d.id === addingVersionToDefinitionId), [catalogue, addingVersionToDefinitionId]);
 
   return (
     <main className="flex-1 overflow-y-auto">
@@ -206,7 +207,7 @@ export default function BotsAdminPage() {
       </div>
       {isDeployModalOpen && <DeployBotModal businesses={businesses} businessesState={businessesState} definitions={catalogue} catalogueState={catalogueState} initialBusinessId={requestedBusinessId} onClose={closeDeployModal} onCreated={() => { setFeedback({ kind: 'success', message: 'Bot deployment created. Activate and publish it separately when it is ready.' }); void refreshDeployments(); }} />}
       {isRegisterModalOpen && <RegisterBotModal onClose={() => setIsRegisterModalOpen(false)} onCreated={() => { setFeedback({ kind: 'success', message: 'Bot registered successfully.' }); void refreshCatalogue(); }} onPartialSuccessClose={() => { setIsRegisterModalOpen(false); void refreshCatalogue(); }} />}
-      {addingVersionToDefinitionId !== undefined && <AddVersionModal definition={catalogue.find((d) => d.id === addingVersionToDefinitionId)!} onClose={() => setAddingVersionToDefinitionId(undefined)} onCreated={() => { setFeedback({ kind: 'success', message: 'Bot version added successfully.' }); void refreshCatalogue(); }} />}
+      {addingVersionDefinition !== undefined && <AddVersionModal definition={addingVersionDefinition} onClose={() => setAddingVersionToDefinitionId(undefined)} onCreated={() => { setFeedback({ kind: 'success', message: 'Bot version added successfully.' }); void refreshCatalogue(); }} />}
       {publicationAction !== undefined && <PublicationConfirmationDialog action={publicationAction.action} pending={mutatingDeploymentId === publicationAction.deployment.id} onCancel={() => setPublicationAction(undefined)} onConfirm={() => { void handlePublicationMutation(); }} />}
     </main>
   );
