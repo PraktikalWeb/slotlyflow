@@ -10,7 +10,6 @@ import {
   dashboardDisplayName,
   dashboardUserInitials,
 } from '../../src/dashboard/dashboard-types';
-import { useWhatsAppConnection } from '../../src/whatsapp/whatsapp-connection-context';
 
 const NAV_ITEMS = [
   { name: 'Home', icon: 'overview' as const, path: '/dashboard' },
@@ -26,7 +25,6 @@ export const DesktopSidebar = ({ isCollapsed, setIsCollapsed }: { isCollapsed: b
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isOrgOpen, setIsOrgOpen] = useState(false);
   const { selectedMembership, user } = useDashboardContext();
-  const { status: whatsappStatus } = useWhatsAppConnection();
   const activeBusiness = selectedMembership.organization;
   const displayName = dashboardDisplayName(user);
   const userInitials = dashboardUserInitials(user);
@@ -47,8 +45,7 @@ export const DesktopSidebar = ({ isCollapsed, setIsCollapsed }: { isCollapsed: b
     setMounted(true);
   }, []);
 
-  const majorPageLoading = whatsappStatus === 'loading';
-  const effectiveSidebarOpen = majorPageLoading ? false : (activeTab === 'Inbox' ? false : !isCollapsed);
+  const effectiveSidebarOpen = activeTab === 'Inbox' ? false : !isCollapsed;
 
   if (!mounted) {
     return <aside className="bg-[var(--brand-green)] text-white flex flex-col shrink-0 rounded-r-[var(--radius)] shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-20 w-[244px] hidden lg:flex"></aside>;
@@ -57,9 +54,9 @@ export const DesktopSidebar = ({ isCollapsed, setIsCollapsed }: { isCollapsed: b
   return (
     <aside 
       onClick={() => {
-        if (!effectiveSidebarOpen && activeTab !== 'Inbox' && !majorPageLoading) setIsCollapsed(false);
+        if (!effectiveSidebarOpen && activeTab !== 'Inbox') setIsCollapsed(false);
       }}
-      className={`bg-[var(--brand-green)] text-white flex-col shrink-0 rounded-r-[var(--radius)] shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-20 transition-all duration-300 hidden lg:flex ${effectiveSidebarOpen ? 'w-[244px]' : 'w-[72px] cursor-pointer'} ${activeTab === 'Inbox' || majorPageLoading ? '!cursor-default' : ''}`}
+      className={`bg-[var(--brand-green)] text-white flex-col shrink-0 rounded-r-[var(--radius)] shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-20 transition-[width] duration-300 hidden lg:flex ${effectiveSidebarOpen ? 'w-[244px]' : 'w-[72px] cursor-pointer'} ${activeTab === 'Inbox' ? '!cursor-default' : ''}`}
     >
       
       {/* Logo */}
