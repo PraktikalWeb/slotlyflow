@@ -4,9 +4,11 @@ import type {
   AddTeamMemberRequest,
   CreateTeamRequest,
   HandoverAssignmentResponse,
+  HandoverInactivitySettingsResponse,
   NotificationUnreadCountResponse,
   OrganizationNotificationSettingsResponse,
   OrganizationNotificationsResponse,
+  ResolveHandoverResponse,
   TeamListResponse,
   TeamResponse,
   UpdateOrganizationNotificationSettingsRequest,
@@ -86,6 +88,29 @@ export class NotificationController {
     const actor = await this.auth.current(request.cookies[this.config.session.cookieName]);
     const context = await this.contexts.resolveForPermission(actor.id, organizationId, 'handoff.accept');
     return this.notifications.publishHandover(context, conversationId);
+  }
+
+  @Get(':organizationId/handover-settings')
+  async handoverSettings(@Param('organizationId') organizationId: string, @Req() request: FastifyRequest): Promise<HandoverInactivitySettingsResponse> {
+    const actor = await this.auth.current(request.cookies[this.config.session.cookieName]);
+    const context = await this.contexts.resolveForPermission(actor.id, organizationId, 'organization.read');
+    return this.notifications.handoverInactivitySettings(context);
+  }
+
+  @Patch(':organizationId/handover-settings')
+  async updateHandoverSettings(@Param('organizationId') organizationId: string, @Body() body: unknown, @Req() request: FastifyRequest): Promise<HandoverInactivitySettingsResponse> {
+    this.csrf.assert(request);
+    const actor = await this.auth.current(request.cookies[this.config.session.cookieName]);
+    const context = await this.contexts.resolveForPermission(actor.id, organizationId, 'organization.update');
+    return this.notifications.updateHandoverInactivitySettings(context, body);
+  }
+
+  @Post(':organizationId/handovers/:handoverId/resolve')
+  async resolveHandover(@Param('organizationId') organizationId: string, @Param('handoverId') handoverId: string, @Req() request: FastifyRequest): Promise<ResolveHandoverResponse> {
+    this.csrf.assert(request);
+    const actor = await this.auth.current(request.cookies[this.config.session.cookieName]);
+    const context = await this.contexts.resolveForPermission(actor.id, organizationId, 'handoff.complete');
+    return { outcome: await this.notifications.resolveHandover(context, handoverId) };
   }
 
   @Get(':organizationId/notifications/unread-count')

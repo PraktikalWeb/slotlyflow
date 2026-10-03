@@ -51,10 +51,13 @@ export class NotificationDeliveryService {
       try {
         result = await this.email.sendNotificationEmail({
           to: authorization.destination,
-          subject: 'New WhatsApp handover assigned to you',
+          subject: authorization.handoverContext === null
+            ? 'New WhatsApp handover assigned to you'
+            : `${authorization.handoverContext.requestType === 'damaged_or_incorrect_item' ? 'Priority ' : ''}WhatsApp handover: ${authorization.handoverContext.requestType.replaceAll('_', ' ')} – ${authorization.businessName}`.replace(/[\r\n]/g, ' '),
           businessName: authorization.businessName,
           customerDisplayName: authorization.customerDisplayName,
-          conversationUrl: this.conversationUrl(authorization.conversationId),
+          conversationUrl: authorization.handoverContext === null ? this.conversationUrl(authorization.conversationId) : null,
+          handoverContext: authorization.handoverContext,
         });
       } catch {
         const status = await this.repository.markDeliveryFailed(delivery, maximumAttempts, new Date());

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import type { InboundWhatsAppMessage } from './inbound-whatsapp-message.types.js';
+import type { HumanBusinessAppMessage } from './human-business-app-message.types.js';
 import { WHATSAPP_INBOUND_MESSAGE_REPOSITORY, WHATSAPP_OUTBOUND_MESSAGE_REPOSITORY } from './whatsapp-inbound-message.tokens.js';
 import type { InboundWhatsAppMessageRepository } from './inbound-whatsapp-message.repository.js';
 import type { OutboundWhatsAppMessageRepository, ProviderMessageStatusUpdate } from './outbound-whatsapp-message.repository.js';
@@ -55,6 +56,10 @@ export class InboundWhatsAppMessageService {
       const result = await this.repository.persistVerifiedInboundMessage(message);
       if (result.outcome === 'stored') {
         stored += 1;
+        if (result.handoverActive) {
+          this.logger.log({ event: 'handover_activity_deadline_extended', organization_id: result.organizationId, conversation_id: result.conversationId });
+          continue;
+        }
         this.logger.log({
           event: 'bot_runtime_inbound_candidate',
           organization_id: result.organizationId,
@@ -101,6 +106,7 @@ export class InboundWhatsAppMessageService {
             conversationId: result.conversationId,
             inboundMessageId: result.inboundMessageId,
             providerMessageId: message.providerMessageId,
+            receivedAt: message.occurredAt,
             customerWhatsAppId: result.customerWhatsAppId,
             messageType: message.messageType,
             input: message.messageType === 'INTERACTIVE_REPLY' && typeof message.interactiveOptionId === 'string'
@@ -134,5 +140,29 @@ export class InboundWhatsAppMessageService {
       else unknownConnections += 1;
     }
     return { updated, ignored, unknownMessages, unknownConnections };
+  }
+
+  async persistAllHumanBusinessAppMessages(messages: readonly HumanBusinessAppMessage[]): Promise<{
+    readonly stored: number;
+    readonly duplicates: number;
+    readonly unknownConnections: number;
+    readonly unknownConversations: number;
+    readonly activeHandovers: number;
+  }> {
+    let stored = 0;
+    let duplicates = 0;
+    let unknownConnections = 0;
+    let unknownConversations = 0;
+    let activeHandovers = 0;
+    for (const message of messages) {
+      const result = await this.repository.persistVerifiedHumanBusinessAppMessage(message);
+      if (result.outcome === 'stored') {
+        stored += 1;
+        if (result.handoverActive) activeHandovers += 1;
+      } else if (result.outcome === 'duplicate') duplicates += 1;
+      else if (result.outcome === 'unknown_connection') unknownConnections += 1;
+      else unknownConversations += 1;
+    }
+    return { stored, duplicates, unknownConnections, unknownConversations, activeHandovers };
   }
 }

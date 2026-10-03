@@ -11,9 +11,11 @@ import type {
 } from '@slotlyflow/contracts';
 
 import type { TrustedOrganizationContext } from '../organizations/organization.types.js';
-import { DrizzleNotificationRepository, type HandoverPublication, type NotificationSettings } from './notification.repository.js';
+import type { TrustedAutomationHandoverContext } from './handover-context.types.js';
+import { validHandoverInactivityMinutes } from './handover-inactivity.policy.js';
+import { DrizzleNotificationRepository, type HandoverPublication, type HandoverInactivitySettings, type NotificationSettings } from './notification.repository.js';
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const maximumFallbackEmails = 10;
 
@@ -114,12 +116,20 @@ export class NotificationService {
   async publishHandoverForTrustedAutomation(input: {
     readonly organizationId: string;
     readonly conversationId: string;
+    readonly whatsappConnectionId?: string;
+    readonly customerWhatsAppId?: string;
+    readonly details?: TrustedAutomationHandoverContext;
   }): Promise<HandoverPublication | undefined> {
     const publication = await this.repository.publishHandoverForConversation(
       input.organizationId,
       input.conversationId,
       null,
-      { preserveExistingAssignment: true },
+      {
+        preserveExistingAssignment: true,
+        ...(input.whatsappConnectionId === undefined ? {} : { whatsappConnectionId: input.whatsappConnectionId }),
+        ...(input.customerWhatsAppId === undefined ? {} : { customerWhatsAppId: input.customerWhatsAppId }),
+        ...(input.details === undefined ? {} : { details: input.details }),
+      },
     );
     if (publication !== undefined) {
       this.logger.log({
@@ -138,6 +148,53 @@ export class NotificationService {
     readonly conversationId: string;
   }): Promise<boolean> {
     return this.repository.hasHandoverForConversation(input.organizationId, input.conversationId);
+  }
+
+  handoverInactivitySettings(context: TrustedOrganizationContext): Promise<HandoverInactivitySettings> {
+    return this.repository.handoverInactivitySettings(context.organizationId);
+  }
+
+  async updateHandoverInactivitySettings(context: TrustedOrganizationContext, request: unknown): Promise<HandoverInactivitySettings> {
+    if (typeof request !== 'object' || request === null || !('handoverAutoCloseEnabled' in request)
+      || !('handoverInactivityMinutes' in request) || typeof request.handoverAutoCloseEnabled !== 'boolean'
+      || !validHandoverInactivityMinutes(request.handoverInactivityMinutes)) {
+      throw new BadRequestException({ code: 'HANDOVER_INACTIVITY_SETTINGS_INVALID' });
+    }
+    return this.repository.saveHandoverInactivitySettings(context.organizationId, {
+      handoverAutoCloseEnabled: request.handoverAutoCloseEnabled,
+      handoverInactivityMinutes: request.handoverInactivityMinutes,
+    });
+  }
+
+  async resolveHandover(context: TrustedOrganizationContext, handoverId: string): Promise<'closed' | 'already_closed'> {
+    if (!uuidPattern.test(handoverId)) this.notFound();
+    const outcome = await this.repository.closeHandover({
+      organizationId: context.organizationId,
+      handoverId,
+      reason: 'manual',
+      actorUserId: context.userId,
+      now: new Date(),
+    });
+    if (outcome === 'not_found') this.notFound();
+    if (outcome === 'not_due') throw new ConflictException({ code: 'HANDOVER_CLOSE_CONFLICT' });
+    if (outcome === 'closed') this.logger.log({ event: 'handover_manual_closed', organization_id: context.organizationId, handover_assignment_id: handoverId });
+    return outcome === 'closed' ? 'closed' : 'already_closed';
+  }
+
+  async closeExpiredHandover(input: { readonly organizationId: string; readonly handoverId: string }, now: Date): Promise<'closed' | 'skipped'> {
+    const outcome = await this.repository.closeHandover({
+      organizationId: input.organizationId,
+      handoverId: input.handoverId,
+      reason: 'inactivity_timeout',
+      actorUserId: null,
+      now,
+    });
+    if (outcome === 'closed') this.logger.log({ event: 'handover_auto_closed', organization_id: input.organizationId, handover_assignment_id: input.handoverId });
+    return outcome === 'closed' ? 'closed' : 'skipped';
+  }
+
+  dueHandovers(now: Date, limit: number): Promise<readonly { readonly id: string; readonly organizationId: string }[]> {
+    return this.repository.listDueHandovers(now, limit);
   }
 
   async notificationsForRecipient(context: TrustedOrganizationContext): Promise<readonly NotificationResponse[]> {

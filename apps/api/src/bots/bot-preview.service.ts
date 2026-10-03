@@ -16,6 +16,8 @@ import { BotDeploymentResolver } from './bot-deployment-resolver.service.js';
 import type { StructuredBotOutput, TrustedInboundBotRuntimeContext } from './built-in-bot-runtime.types.js';
 import { BotPreviewSessionStore } from './bot-preview-session.store.js';
 import { isTrustedBotImplementationKey } from './trusted-bot-implementations.js';
+import type { OrganizationRepository } from '../organizations/organization.repository.js';
+import { ORGANIZATION_REPOSITORY } from '../organizations/organization.tokens.js';
 
 const maximumPreviewMessageLength = 4_096;
 const optionIdPattern = /^[0-9A-Za-z._:=-]{1,255}$/;
@@ -32,6 +34,8 @@ export class BotPreviewService {
     private readonly deployments: BotDeploymentResolver,
     @Inject(BotPreviewSessionStore)
     private readonly sessions: BotPreviewSessionStore,
+    @Inject(ORGANIZATION_REPOSITORY)
+    private readonly organizations: OrganizationRepository,
   ) {}
 
   async execute(
@@ -83,6 +87,21 @@ export class BotPreviewService {
             session.handover = true;
           },
           reply: async (_context, output) => { replies.push(output); },
+        }, {
+          hasHandover: async () => session.handover,
+          establishHandover: async () => {
+            session.handover = true;
+            return { created: true, assignmentId: 'preview' };
+          },
+          transition: async (_context, decide) => {
+            const decision = decide(session.wansatiState);
+            session.wansatiState = decision.stateAfter;
+            return decision;
+          },
+          getSettings: () => this.organizations.findSettingsForOrganization === undefined
+            ? Promise.resolve(undefined)
+            : this.organizations.findSettingsForOrganization(organization.organizationId),
+          reply: async (_context, output) => { replies.push(output); },
         });
 
         const executionId = randomUUID();
@@ -92,6 +111,7 @@ export class BotPreviewService {
           conversationId: session.id,
           inboundMessageId: executionId,
           providerMessageId: `preview:${executionId}`,
+          receivedAt: new Date(),
           customerWhatsAppId: 'preview',
           messageType: request.input.type === 'text' ? 'TEXT' : 'INTERACTIVE_REPLY',
           input: request.input,

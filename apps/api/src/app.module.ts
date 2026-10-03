@@ -55,6 +55,7 @@ import { NotificationPreferencesController } from './notifications/notification-
 import { DrizzleNotificationRepository } from './notifications/notification.repository.js';
 import { NotificationService } from './notifications/notification.service.js';
 import { NotificationDeliveryScheduler, NotificationDeliveryService } from './notifications/notification-delivery.service.js';
+import { HandoverExpiryScheduler, HandoverExpiryService } from './notifications/handover-expiry.service.js';
 import { BuiltInBotRuntime } from './bots/built-in-bot-runtime.service.js';
 import { BotPublicationController } from './bots/bot-publication.controller.js';
 import { BotPreviewController } from './bots/bot-preview.controller.js';
@@ -109,6 +110,8 @@ export class AppModule {
         DrizzleNotificationRepository,
         NotificationDeliveryService,
         NotificationDeliveryScheduler,
+        HandoverExpiryService,
+        HandoverExpiryScheduler,
         BuiltInBotRuntime,
         BotPreviewService,
         BotPreviewSessionStore,

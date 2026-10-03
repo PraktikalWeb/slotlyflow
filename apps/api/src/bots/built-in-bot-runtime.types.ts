@@ -1,5 +1,7 @@
 import type { ResolvedBotRuntimeMetadata } from './bot-deployment.types.js';
 import type { InboundWhatsAppMessageType } from '../whatsapp/inbound-whatsapp-message.types.js';
+import type { OrganizationSettings } from '../organizations/organization.types.js';
+import type { TrustedAutomationHandoverContext } from '../notifications/handover-context.types.js';
 
 export type NormalizedBotInput =
   | { readonly type: 'text'; readonly text: string }
@@ -51,6 +53,7 @@ export interface TrustedInboundBotRuntimeContext {
   readonly conversationId: string;
   readonly inboundMessageId: string;
   readonly providerMessageId: string;
+  readonly receivedAt: Date;
   readonly customerWhatsAppId: string;
   readonly messageType: InboundWhatsAppMessageType;
   readonly input: NormalizedBotInput;
@@ -81,4 +84,25 @@ export interface HandoverTestBotCapabilities {
     output: StructuredBotOutput,
     idempotencyKey: string,
   ): Promise<void>;
+}
+
+/** Durable answers are keyed by reviewed collection-node IDs, not inferred from message text. */
+export interface WansatiBotState {
+  readonly node: string;
+  readonly answers: Readonly<Record<string, string>>;
+}
+
+export interface WansatiTransitionDecision {
+  readonly stateAfter: WansatiBotState;
+  readonly output: StructuredBotOutput | null;
+  readonly handoverRequested: boolean;
+  readonly requestType?: string;
+}
+
+export interface WansatiBotCapabilities {
+  hasHandover(context: TrustedInboundBotRuntimeContext): Promise<boolean>;
+  establishHandover(context: TrustedInboundBotRuntimeContext, details: TrustedAutomationHandoverContext): Promise<{ readonly created: boolean; readonly assignmentId: string } | undefined>;
+  transition(context: TrustedInboundBotRuntimeContext, decide: (state: WansatiBotState) => WansatiTransitionDecision): Promise<WansatiTransitionDecision>;
+  getSettings(context: TrustedInboundBotRuntimeContext): Promise<OrganizationSettings | undefined>;
+  reply(context: TrustedInboundBotRuntimeContext, output: StructuredBotOutput, idempotencyKey: string): Promise<void>;
 }

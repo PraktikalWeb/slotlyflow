@@ -148,28 +148,31 @@ export class SmtpEmailProvider implements EmailProvider {
   async sendNotificationEmail(message: NotificationEmailMessage): Promise<{ readonly providerMessageId: string | undefined }> {
     const transport = this.transportFor(noRegistrationDiagnostics);
     await transport.verify();
-    const escapedUrl = escapeHtml(message.conversationUrl);
-    const htmlContent = buildTransactionalEmailHtml({
-      heading: 'New WhatsApp handover assigned to you',
-      supportingCopy: `A customer conversation has been assigned to you for ${escapeHtml(message.businessName)}.`,
-      ctaLabel: 'Open conversation',
-      ctaUrl: escapedUrl,
-      secondaryCopy: [`Customer: ${escapeHtml(message.customerDisplayName)}`],
-      decorativeVariant: 'verify-email',
-    });
+    const details = message.handoverContext;
+    const structuredLines = details === null || details === undefined ? [] : [
+      `WhatsApp: ${details.customerWhatsAppId}`,
+      ...(details.savedContact === null || details.savedContact === undefined ? [] : [`Saved contact: ${details.savedContact ? 'Yes' : 'No'}`]),
+      `Request: ${details.requestType.replaceAll('_', ' ')}`,
+      `Received: ${details.receivedAt}`,
+      `Operating hours: ${details.receivedDuringBusinessHours === null ? 'Not configured' : details.receivedDuringBusinessHours ? 'During' : 'Outside'}`,
+      ...Object.entries(details.answers).map(([key, value]) => `${key.replaceAll('_', ' ')}: ${value}`),
+    ];
+    const htmlContent = details === null || details === undefined
+      ? buildTransactionalEmailHtml({
+        heading: 'New WhatsApp handover assigned to you',
+        supportingCopy: `A customer conversation has been assigned to you for ${escapeHtml(message.businessName)}.`,
+        ctaLabel: 'Open conversation',
+        ctaUrl: escapeHtml(message.conversationUrl ?? ''),
+        secondaryCopy: [`Customer: ${escapeHtml(message.customerDisplayName)}`],
+        decorativeVariant: 'verify-email',
+      })
+      : `<html><body><h1>${escapeHtml(message.subject)}</h1><p>Business: ${escapeHtml(message.businessName)}<br>Customer: ${escapeHtml(message.customerDisplayName)}</p>${structuredLines.map((line) => `<p>${escapeHtml(line).replaceAll('\n', '<br>')}</p>`).join('')}</body></html>`;
     const result = await transport.sendMail({
       from: { address: this.config.from.address, name: this.config.from.name },
       to: message.to,
       subject: message.subject,
-      text: [
-        message.subject,
-        '',
-        `A customer conversation has been assigned to you for ${message.businessName}.`,
-        `Customer: ${message.customerDisplayName}`,
-        '',
-        'Open conversation:',
-        message.conversationUrl,
-      ].join('\n'),
+      text: [message.subject, '', `Business: ${message.businessName}`, `Customer: ${message.customerDisplayName}`, ...structuredLines,
+        ...(message.conversationUrl === null ? [] : ['', 'Open conversation:', message.conversationUrl])].join('\n'),
       html: htmlContent,
       attachments: getTransactionalEmailAttachments(),
     });

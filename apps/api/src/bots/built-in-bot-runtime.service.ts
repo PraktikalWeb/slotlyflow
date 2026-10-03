@@ -6,9 +6,11 @@ import { NotificationService } from '../notifications/notification.service.js';
 import { OutboundWhatsAppMessageService } from '../whatsapp/outbound-whatsapp-message.service.js';
 import { createBuiltInBotRegistry } from './built-in-bot-registry.js';
 import { isTrustedBotImplementationKey, type TrustedBotImplementationKey } from './trusted-bot-implementations.js';
-import type { BuiltInBotRuntimeOutcome, TrustedBuiltInBotHandler, TrustedInboundBotRuntimeContext } from './built-in-bot-runtime.types.js';
+import type { BuiltInBotRuntimeOutcome, StructuredBotOutput, TrustedBuiltInBotHandler, TrustedInboundBotRuntimeContext } from './built-in-bot-runtime.types.js';
 import type { BotConversationStateRepository } from './bot-conversation-state.repository.js';
 import { BOT_CONVERSATION_STATE_REPOSITORY } from './bot-conversation-state.tokens.js';
+import type { OrganizationRepository } from '../organizations/organization.repository.js';
+import { ORGANIZATION_REPOSITORY } from '../organizations/organization.tokens.js';
 
 /**
  * Trusted dispatch for compiled, allow-listed implementations. There is no
@@ -28,10 +30,21 @@ export class BuiltInBotRuntime {
     private readonly outboundMessages: OutboundWhatsAppMessageService,
     @Inject(BOT_CONVERSATION_STATE_REPOSITORY)
     private readonly states: BotConversationStateRepository,
+    @Inject(ORGANIZATION_REPOSITORY)
+    private readonly organizations: OrganizationRepository,
   ) {
     // This is an explicit allow-listed mapping to reviewed compiled code.
     // Deployment metadata can select only an existing key; it never supplies
     // a module path, script, URL, or arbitrary executable content.
+    const reply = async (context: TrustedInboundBotRuntimeContext, output: StructuredBotOutput, idempotencyKey: string) => {
+      await this.outboundMessages.sendTrustedAutomationMessage({
+        organizationId: context.organizationId,
+        whatsappConnectionId: context.whatsappConnectionId,
+        conversationId: context.conversationId,
+        output,
+        idempotencyKey,
+      });
+    };
     this.handlers = createBuiltInBotRegistry({
       hasHandover: (context) => this.handovers.hasHandoverForTrustedAutomation(context),
       establishHandover: async (context) => {
@@ -42,15 +55,24 @@ export class BuiltInBotRuntime {
       },
       transition: (context, decide) => this.states.transition(context, decide),
       markHandover: (context) => this.states.markHandover(context),
-      reply: async (context, output, idempotencyKey) => {
-        await this.outboundMessages.sendTrustedAutomationMessage({
+      reply,
+    }, {
+      hasHandover: (context) => this.handovers.hasHandoverForTrustedAutomation(context),
+      establishHandover: async (context, details) => {
+        const result = await this.handovers.publishHandoverForTrustedAutomation({
           organizationId: context.organizationId,
-          whatsappConnectionId: context.whatsappConnectionId,
           conversationId: context.conversationId,
-          output,
-          idempotencyKey,
+          whatsappConnectionId: context.whatsappConnectionId,
+          customerWhatsAppId: context.customerWhatsAppId,
+          details,
         });
+        return result === undefined ? undefined : { created: result.created, assignmentId: result.assignment.id };
       },
+      transition: (context, decide) => this.states.transitionWansati(context, decide),
+      getSettings: (context) => this.organizations.findSettingsForOrganization === undefined
+        ? Promise.resolve(undefined)
+        : this.organizations.findSettingsForOrganization(context.organizationId),
+      reply,
     });
   }
 

@@ -8,10 +8,13 @@ import {
 } from '@slotlyflow/database';
 
 import { AUTH_DATABASE } from '../auth/auth.tokens.js';
+import { DrizzleNotificationRepository } from '../notifications/notification.repository.js';
 import type { InboundMessagePersistenceResult, InboundWhatsAppMessage } from './inbound-whatsapp-message.types.js';
+import type { HumanBusinessAppMessage, HumanBusinessAppPersistenceResult } from './human-business-app-message.types.js';
 
 export interface InboundWhatsAppMessageRepository {
   persistVerifiedInboundMessage(message: InboundWhatsAppMessage): Promise<InboundMessagePersistenceResult>;
+  persistVerifiedHumanBusinessAppMessage(message: HumanBusinessAppMessage): Promise<HumanBusinessAppPersistenceResult>;
   hasConversationForTrustedConnection(input: {
     readonly organizationId: string;
     readonly whatsappConnectionId: string;
@@ -23,7 +26,10 @@ export interface InboundWhatsAppMessageRepository {
 
 @Injectable()
 export class DrizzleInboundWhatsAppMessageRepository implements InboundWhatsAppMessageRepository {
-  constructor(@Inject(AUTH_DATABASE) private readonly db: SlotlyFlowDatabase) {}
+  constructor(
+    @Inject(AUTH_DATABASE) private readonly db: SlotlyFlowDatabase,
+    @Inject(DrizzleNotificationRepository) private readonly handovers: DrizzleNotificationRepository,
+  ) {}
 
   async persistVerifiedInboundMessage(message: InboundWhatsAppMessage): Promise<InboundMessagePersistenceResult> {
     return this.db.transaction(async (tx) => {
@@ -66,6 +72,7 @@ export class DrizzleInboundWhatsAppMessageRepository implements InboundWhatsAppM
           provider: message.provider,
           providerMessageId: message.providerMessageId,
           direction: 'INBOUND',
+          origin: 'CUSTOMER_INBOUND',
           // The existing database enum remains provider-neutral. A normalized
           // interactive reply is identified by its dedicated stable-ID column.
           messageType: message.messageType === 'INTERACTIVE_REPLY' ? 'TEXT' : message.messageType,
@@ -76,16 +83,69 @@ export class DrizzleInboundWhatsAppMessageRepository implements InboundWhatsAppM
         .onConflictDoNothing({ target: [messages.provider, messages.providerMessageId] })
         .returning({ id: messages.id });
 
-      return inserted.length === 0
-        ? { outcome: 'duplicate', organizationId: connection.organizationId, connectionId: connection.id }
-        : {
+      if (inserted.length === 0) return { outcome: 'duplicate', organizationId: connection.organizationId, connectionId: connection.id };
+      const handoverActive = await this.handovers.recordCustomerActivityInTransaction(
+        tx, connection.organizationId, conversation.id, message.occurredAt,
+      );
+      return {
           outcome: 'stored',
           organizationId: connection.organizationId,
           connectionId: connection.id,
           conversationId: conversation.id,
           inboundMessageId: inserted[0]!.id,
           customerWhatsAppId: conversation.customerWhatsAppId,
+          handoverActive,
         };
+    });
+  }
+
+  async persistVerifiedHumanBusinessAppMessage(message: HumanBusinessAppMessage): Promise<HumanBusinessAppPersistenceResult> {
+    return this.db.transaction(async (tx) => {
+      const [connection] = await tx.select({ id: whatsappConnections.id, organizationId: whatsappConnections.organizationId })
+        .from(whatsappConnections).where(and(
+          eq(whatsappConnections.provider, message.provider),
+          eq(whatsappConnections.externalPhoneNumberId, message.destinationPhoneNumberId),
+          eq(whatsappConnections.externalWabaId, message.wabaId),
+          eq(whatsappConnections.connectionSource, 'EXISTING_BUSINESS_APP'),
+          eq(whatsappConnections.connectionStatus, 'CONNECTED'),
+        ));
+      if (connection === undefined) return { outcome: 'unknown_connection' };
+
+      // The echo recipient is a phone number, not necessarily a WhatsApp ID.
+      // Only an exact existing conversation identity is unambiguous today.
+      const [conversation] = await tx.select({ id: conversations.id }).from(conversations).where(and(
+        eq(conversations.organizationId, connection.organizationId),
+        eq(conversations.whatsappConnectionId, connection.id),
+        eq(conversations.customerWhatsAppId, message.customerWhatsAppId),
+      )).for('update');
+      if (conversation === undefined) return { outcome: 'unknown_conversation' };
+
+      const [inserted] = await tx.insert(messages).values({
+        organizationId: connection.organizationId,
+        conversationId: conversation.id,
+        whatsappConnectionId: connection.id,
+        provider: message.provider,
+        providerMessageId: message.providerMessageId,
+        direction: 'OUTBOUND',
+        origin: 'BUSINESS_APP_OUTBOUND',
+        messageType: message.messageType,
+        textBody: message.textBody,
+        providerTimestamp: message.occurredAt,
+      }).onConflictDoNothing({ target: [messages.provider, messages.providerMessageId] })
+        .returning({ id: messages.id });
+      if (inserted === undefined) return { outcome: 'duplicate' };
+
+      await tx.update(conversations).set({
+        lastMessageAt: sql`greatest(${conversations.lastMessageAt}, ${message.occurredAt.toISOString()}::timestamptz)`,
+        updatedAt: new Date(),
+      }).where(and(eq(conversations.organizationId, connection.organizationId), eq(conversations.id, conversation.id)));
+      const handoverActive = await this.handovers.recordHumanActivityInTransaction(
+        tx, connection.organizationId, conversation.id, message.occurredAt,
+      );
+      return {
+        outcome: 'stored', organizationId: connection.organizationId, connectionId: connection.id,
+        conversationId: conversation.id, handoverActive,
+      };
     });
   }
 

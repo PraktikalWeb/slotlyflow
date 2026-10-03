@@ -141,6 +141,9 @@ export class MetaWhatsAppWebhookController {
       createConnectionTestDiagnosticReporter(request.id, request.log),
       contactDiagnostics,
     );
+    const humanEchoPersistence = await this.inboundMessageService.persistAllHumanBusinessAppMessages(
+      normalized.humanBusinessAppMessages,
+    );
     const statusPersistence = await this.inboundMessageService.applyAllStatuses(normalized.statuses);
     request.log.info(
       {
@@ -152,6 +155,12 @@ export class MetaWhatsAppWebhookController {
         duplicate_messages: persisted.duplicates,
         connection_tests_intercepted: persisted.connectionTestsIntercepted,
         bot_deployments_resolved: persisted.botDeploymentsResolved,
+        business_app_echoes_received: normalized.humanBusinessAppMessages.length,
+        business_app_echoes_stored: humanEchoPersistence.stored,
+        business_app_echoes_duplicate: humanEchoPersistence.duplicates,
+        business_app_echoes_unknown_connections: humanEchoPersistence.unknownConnections,
+        business_app_echoes_unknown_conversations: humanEchoPersistence.unknownConversations,
+        business_app_echoes_active_handovers: humanEchoPersistence.activeHandovers,
         unknown_connections: persisted.unknownConnections,
         provider_statuses_received: normalized.statuses.length,
         provider_statuses_updated: statusPersistence.updated,

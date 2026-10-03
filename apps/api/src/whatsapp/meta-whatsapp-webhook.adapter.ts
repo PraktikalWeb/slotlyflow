@@ -1,4 +1,5 @@
 import type { InboundWhatsAppMessage } from './inbound-whatsapp-message.types.js';
+import type { HumanBusinessAppMessage } from './human-business-app-message.types.js';
 import type { ProviderMessageStatusUpdate } from './outbound-whatsapp-message.repository.js';
 import type { CoexistenceContactIdentity } from '../contacts/contact.types.js';
 import { normalizeWhatsAppContactIdentity } from '../contacts/whatsapp-contact-identity.js';
@@ -17,6 +18,7 @@ export class MetaWebhookPayloadError extends Error {
 
 export interface NormalizedMetaWebhook {
   readonly messages: readonly InboundWhatsAppMessage[];
+  readonly humanBusinessAppMessages: readonly HumanBusinessAppMessage[];
   readonly statuses: readonly ProviderMessageStatusUpdate[];
   readonly coexistenceContacts: readonly CoexistenceContactIdentity[];
   readonly coexistenceSyncEvents: number;
@@ -37,8 +39,8 @@ export interface NormalizedCoexistenceHistoryEvent {
 }
 
 /**
- * Meta-only JSON normalization boundary for normal messages/statuses and the
- * narrow Coexistence saved-contact/history identity slices. Raw provider
+ * Meta-only JSON normalization boundary for messages, statuses, Business app
+ * echoes, and narrow Coexistence contact/history identity slices. Raw provider
  * fragments never escape.
  */
 export function normalizeMetaWhatsAppWebhook(payload: unknown): NormalizedMetaWebhook {
@@ -47,6 +49,7 @@ export function normalizeMetaWhatsAppWebhook(payload: unknown): NormalizedMetaWe
   }
 
   const messages: InboundWhatsAppMessage[] = [];
+  const humanBusinessAppMessages: HumanBusinessAppMessage[] = [];
   const statuses: ProviderMessageStatusUpdate[] = [];
   const coexistenceContacts: CoexistenceContactIdentity[] = [];
   const coexistenceHistoryEvents: NormalizedCoexistenceHistoryEvent[] = [];
@@ -81,6 +84,21 @@ export function normalizeMetaWhatsAppWebhook(payload: unknown): NormalizedMetaWe
         continue;
       }
 
+      if (change.field === 'smb_message_echoes') {
+        const value = change.value;
+        if (!isIdentifier(entry.id) || !isRecord(value) || !isRecord(value.metadata)
+          || value.messaging_product !== 'whatsapp'
+          || !isIdentifier(value.metadata.phone_number_id)
+          || !Array.isArray(value.message_echoes)) throw new MetaWebhookPayloadError();
+        const destinationPhoneNumberId = value.metadata.phone_number_id;
+        for (const echo of value.message_echoes) {
+          const normalized = normalizeHumanBusinessAppEcho(echo, entry.id, destinationPhoneNumberId);
+          if (normalized === undefined) ignoredEvents += 1;
+          else humanBusinessAppMessages.push(normalized);
+        }
+        continue;
+      }
+
       // All other provider fields are acknowledged without traversing them.
       if (change.field !== 'messages' || !isRecord(change.value)) {
         ignoredEvents += 1;
@@ -112,6 +130,7 @@ export function normalizeMetaWhatsAppWebhook(payload: unknown): NormalizedMetaWe
 
   return {
     messages,
+    humanBusinessAppMessages,
     statuses,
     coexistenceContacts,
     coexistenceSyncEvents,
@@ -120,6 +139,37 @@ export function normalizeMetaWhatsAppWebhook(payload: unknown): NormalizedMetaWe
     coexistenceHistoryEvents,
     ignoredStatusEvents,
     ignoredEvents,
+  };
+}
+
+function normalizeHumanBusinessAppEcho(
+  echo: unknown,
+  wabaId: string,
+  destinationPhoneNumberId: string,
+): HumanBusinessAppMessage | undefined {
+  if (!isRecord(echo) || !isIdentifier(echo.id) || typeof echo.type !== 'string'
+    || normalizeWhatsAppContactIdentity(echo.from) === undefined) throw new MetaWebhookPayloadError();
+  const recipient = normalizeWhatsAppContactIdentity(echo.to);
+  if (recipient === undefined) throw new MetaWebhookPayloadError();
+  const occurredAt = parseUnixSeconds(
+    typeof echo.timestamp === 'number' && Number.isSafeInteger(echo.timestamp)
+      ? String(echo.timestamp)
+      : echo.timestamp,
+  );
+  // Edit, revoke and other non-message echoes must not extend inactivity.
+  if (echo.type === 'text') {
+    if (!isRecord(echo.text) || typeof echo.text.body !== 'string'
+      || echo.text.body.length === 0 || echo.text.body.length > maximumTextLength) throw new MetaWebhookPayloadError();
+    return {
+      provider: 'META', providerMessageId: echo.id, wabaId, destinationPhoneNumberId,
+      customerWhatsAppId: recipient.whatsappId, occurredAt, messageType: 'TEXT', textBody: echo.text.body,
+    };
+  }
+  if (!['image', 'audio', 'video', 'document', 'sticker', 'location'].includes(echo.type)
+    || !isRecord(echo[echo.type])) return undefined;
+  return {
+    provider: 'META', providerMessageId: echo.id, wabaId, destinationPhoneNumberId,
+    customerWhatsAppId: recipient.whatsappId, occurredAt, messageType: 'UNSUPPORTED', textBody: null,
   };
 }
 

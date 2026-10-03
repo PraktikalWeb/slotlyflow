@@ -343,6 +343,17 @@ export interface HandoverAssignmentResponse {
   readonly assigneeUserId: string | null;
 }
 
+export interface HandoverInactivitySettingsResponse {
+  readonly handoverAutoCloseEnabled: boolean;
+  readonly handoverInactivityMinutes: number;
+}
+
+export interface UpdateHandoverInactivitySettingsRequest extends HandoverInactivitySettingsResponse {}
+
+export interface ResolveHandoverResponse {
+  readonly outcome: 'closed' | 'already_closed';
+}
+
 export type BotPublicationStatus = 'PUBLISHED' | 'UNPUBLISHED' | 'NOT_CONFIGURED';
 
 /** Safe Business-facing publication state; deployment identity is never exposed. */

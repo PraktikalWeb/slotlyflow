@@ -89,7 +89,7 @@ export class HandoverTestBot {
             handoverAcknowledgement,
             // A durable reservation prevents duplicate provider sends across
             // webhook retries and process restarts.
-            `bot_handover_ack:${context.deployment.deploymentId}:${context.conversationId}`,
+            `bot_handover_ack:${context.deployment.deploymentId}:${handover.assignmentId}`,
           );
         } catch (error) {
           // A durable handover must never be rolled back merely because the

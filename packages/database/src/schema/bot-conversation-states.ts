@@ -1,4 +1,4 @@
-import { foreignKey, index, pgTable, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { foreignKey, index, jsonb, pgTable, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 import { botDeployments, botVersions } from './bots.js';
 import { conversations } from './conversations.js';
@@ -24,6 +24,8 @@ export const botConversationStates = pgTable(
       .notNull()
       .references(() => botVersions.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
     state: varchar('state', { length: 64 }).notNull(),
+    // Explicit collection answers for trusted deterministic bots; never a client-supplied tenant context.
+    data: jsonb('data').$type<Record<string, string>>().notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

@@ -18,7 +18,15 @@ export interface NotificationEmailMessage {
   readonly subject: string;
   readonly businessName: string;
   readonly customerDisplayName: string;
-  readonly conversationUrl: string;
+  readonly conversationUrl: string | null;
+  readonly handoverContext?: {
+    readonly requestType: string;
+    readonly answers: Readonly<Record<string, string>>;
+    readonly receivedAt: string;
+    readonly receivedDuringBusinessHours: boolean | null;
+    readonly customerWhatsAppId: string;
+    readonly savedContact?: boolean | null;
+  } | null;
 }
 
 /** SlotlyFlow-owned boundary for transactional authentication email delivery. */

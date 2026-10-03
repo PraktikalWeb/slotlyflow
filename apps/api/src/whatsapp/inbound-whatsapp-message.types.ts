@@ -27,6 +27,7 @@ export type InboundMessagePersistenceResult =
     readonly conversationId: string;
     readonly inboundMessageId: string;
     readonly customerWhatsAppId: string;
+    readonly handoverActive: boolean;
   }
   | {
     readonly outcome: 'duplicate';

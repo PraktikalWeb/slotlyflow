@@ -4,6 +4,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { MetaWhatsAppConfig } from '@slotlyflow/config';
 import { loadApiConfig, loadAuthenticationConfig, loadDatabaseConfig } from '@slotlyflow/config';
 import {
+  contacts,
   conversations,
   createDatabaseConnection,
   messages,
@@ -58,6 +59,7 @@ describeDatabase('M3.1 Meta WhatsApp webhook ingress', () => {
     userIds.clear();
     if (organizationsToDelete.length > 0) {
       await database.db.delete(messages).where(inArray(messages.organizationId, organizationsToDelete));
+      await database.db.delete(contacts).where(inArray(contacts.organizationId, organizationsToDelete));
       await database.db.delete(conversations).where(inArray(conversations.organizationId, organizationsToDelete));
       await database.db.delete(whatsappConnections).where(inArray(whatsappConnections.organizationId, organizationsToDelete));
       await database.db.delete(organizationMembers).where(inArray(organizationMembers.organizationId, organizationsToDelete));
@@ -188,5 +190,32 @@ describeDatabase('M3.1 Meta WhatsApp webhook ingress', () => {
     expect(secondConversations).toHaveLength(1);
     expect(crossTenantConversation).toBeUndefined();
     expect(crossTenantMessages).toEqual([]);
+  });
+
+  it('accepts a signed Coexistence Business App echo through the existing webhook and deduplicates it', async () => {
+    const target = await business();
+    const [connection] = await database.db.select().from(whatsappConnections)
+      .where(eq(whatsappConnections.organizationId, target.organization.id));
+    if (connection === undefined || connection.externalWabaId === null) throw new Error('Expected Coexistence connection.');
+    const [conversation] = await database.db.insert(conversations).values({
+      organizationId: target.organization.id, whatsappConnectionId: connection.id,
+      customerWhatsAppId: '16505551234', lastMessageAt: new Date('2025-02-11T00:00:00.000Z'),
+    }).returning();
+    if (conversation === undefined) throw new Error('Expected conversation.');
+    const raw = JSON.stringify({ object: 'whatsapp_business_account', entry: [{
+      id: connection.externalWabaId, changes: [{ field: 'smb_message_echoes', value: {
+        messaging_product: 'whatsapp',
+        metadata: { display_phone_number: '15550783881', phone_number_id: target.phoneNumberId },
+        message_echoes: [{ from: '15550783881', to: '+16505551234', id: `wamid.${randomUUID()}`,
+          timestamp: '1739321024', type: 'text', text: { body: 'Business App reply' } }],
+      } }],
+    }] });
+    expect((await post(raw)).statusCode).toBe(200);
+    expect((await post(raw)).statusCode).toBe(200);
+    expect((await post(raw, { 'content-type': 'application/json' })).statusCode).toBe(400);
+    const stored = await database.db.select().from(messages).where(eq(messages.organizationId, target.organization.id));
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ conversationId: conversation.id, direction: 'OUTBOUND',
+      origin: 'BUSINESS_APP_OUTBOUND', textBody: 'Business App reply', outboundStatus: null });
   });
 });

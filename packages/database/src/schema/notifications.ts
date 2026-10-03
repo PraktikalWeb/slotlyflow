@@ -23,6 +23,8 @@ export const organizationNotificationSettings = pgTable(
     handoverTeamId: uuid('handover_team_id'),
     fallbackEmailAddresses: text('fallback_email_addresses').array().notNull().default(sql`'{}'::text[]`),
     emailNotificationsEnabled: boolean('email_notifications_enabled').notNull().default(true),
+    handoverAutoCloseEnabled: boolean('handover_auto_close_enabled').notNull().default(true),
+    handoverInactivityMinutes: integer('handover_inactivity_minutes').notNull().default(1440),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -32,6 +34,7 @@ export const organizationNotificationSettings = pgTable(
       columns: [table.organizationId, table.handoverTeamId],
       foreignColumns: [teams.organizationId, teams.id],
     }).onDelete('restrict').onUpdate('cascade'),
+    check('organization_notification_settings_handover_inactivity_bounds', sql`${table.handoverInactivityMinutes} between 15 and 43200`),
   ],
 );
 

@@ -6,6 +6,7 @@ import { organizations } from './organizations.js';
 import { whatsappConnectionProvider, whatsappConnections } from './whatsapp-connections.js';
 
 export const messageDirection = pgEnum('message_direction', ['INBOUND', 'OUTBOUND']);
+export const messageOrigin = pgEnum('message_origin', ['CUSTOMER_INBOUND', 'SLOTLYFLOW_API_OUTBOUND', 'BUSINESS_APP_OUTBOUND']);
 export const messageType = pgEnum('message_type', ['TEXT', 'UNSUPPORTED']);
 /** Provider lifecycle is meaningful only for outbound messages. */
 export const outboundMessageStatus = pgEnum('outbound_message_status', ['ACCEPTED', 'SENT', 'DELIVERED', 'READ', 'FAILED']);
@@ -30,6 +31,7 @@ export const messages = pgTable(
     provider: whatsappConnectionProvider('provider').notNull(),
     providerMessageId: varchar('provider_message_id', { length: 255 }).notNull(),
     direction: messageDirection('direction').notNull(),
+    origin: messageOrigin('origin').notNull(),
     messageType: messageType('message_type').notNull(),
     textBody: text('text_body'),
     interactiveOptionId: varchar('interactive_option_id', { length: 255 }),
@@ -56,6 +58,11 @@ export const messages = pgTable(
       table.whatsappConnectionId,
       table.outboundStatus,
       table.outboundStatusUpdatedAt,
+    ),
+    check(
+      'messages_origin_direction_consistent',
+      sql`(${table.origin} = 'CUSTOMER_INBOUND' and ${table.direction} = 'INBOUND')
+        or (${table.origin} in ('SLOTLYFLOW_API_OUTBOUND', 'BUSINESS_APP_OUTBOUND') and ${table.direction} = 'OUTBOUND')`,
     ),
     check(
       'messages_outbound_status_only_for_outbound',

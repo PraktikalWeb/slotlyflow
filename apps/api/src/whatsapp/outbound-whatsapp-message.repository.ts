@@ -170,6 +170,7 @@ export class DrizzleOutboundWhatsAppMessageRepository implements OutboundWhatsAp
           provider: 'META',
           providerMessageId,
           direction: 'OUTBOUND',
+          origin: 'SLOTLYFLOW_API_OUTBOUND',
           messageType: 'TEXT',
           textBody: request.textBody,
           interactiveOptions: request.interactiveOptions,
@@ -211,6 +212,7 @@ export class DrizzleOutboundWhatsAppMessageRepository implements OutboundWhatsAp
         eq(messages.providerMessageId, status.providerMessageId),
         eq(messages.whatsappConnectionId, connection.id),
         eq(messages.direction, 'OUTBOUND'),
+        eq(messages.origin, 'SLOTLYFLOW_API_OUTBOUND'),
       )).for('update');
       if (message === undefined) return 'unknown_message';
       if (!canAdvanceStatus(message.outboundStatus, status.status)) return 'ignored';
@@ -227,6 +229,7 @@ export class DrizzleOutboundWhatsAppMessageRepository implements OutboundWhatsAp
       eq(messages.id, messageId),
       eq(messages.organizationId, organizationId),
       eq(messages.direction, 'OUTBOUND'),
+      eq(messages.origin, 'SLOTLYFLOW_API_OUTBOUND'),
     ));
     return row === undefined ? undefined : persistedMessageFromRow(row);
   }
@@ -249,6 +252,7 @@ function isMatchingOutboundMessage(row: typeof messages.$inferSelect, request: O
     && row.conversationId === request.conversationId
     && row.whatsappConnectionId === request.whatsappConnectionId
     && row.direction === 'OUTBOUND'
+    && row.origin === 'SLOTLYFLOW_API_OUTBOUND'
     && row.messageType === 'TEXT'
     && row.textBody === request.textBody
     && sameOptions(row.interactiveOptions, request.interactiveOptions);

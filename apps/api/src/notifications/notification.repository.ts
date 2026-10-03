@@ -2,6 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gte, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import {
   auditLogs,
+  botConversationStates,
+  contacts,
   handoverAssignments,
   conversations,
   notificationDeliveries,
@@ -17,6 +19,8 @@ import {
 } from '@slotlyflow/database';
 
 import { AUTH_DATABASE } from '../auth/auth.tokens.js';
+import type { TrustedAutomationHandoverContext } from './handover-context.types.js';
+import { defaultHandoverInactivityMinutes, handoverDeadline } from './handover-inactivity.policy.js';
 
 export interface StoredNotification {
   readonly id: string;
@@ -34,6 +38,14 @@ export interface NotificationSettings {
   readonly fallbackEmailAddresses: readonly string[];
   readonly emailNotificationsEnabled: boolean;
 }
+
+export interface HandoverInactivitySettings {
+  readonly handoverAutoCloseEnabled: boolean;
+  readonly handoverInactivityMinutes: number;
+}
+
+export type HandoverCloseReason = 'inactivity_timeout' | 'manual';
+export type HandoverCloseOutcome = 'closed' | 'already_closed' | 'not_due' | 'not_found';
 
 export interface UserNotificationPreferences {
   readonly preferredEmail: string | null;
@@ -69,7 +81,7 @@ export interface ClaimedNotificationDelivery {
 }
 
 export type DeliveryAuthorization =
-  | { readonly allowed: true; readonly organizationId: string; readonly destination: string; readonly businessName: string; readonly customerDisplayName: string; readonly conversationId: string }
+  | { readonly allowed: true; readonly organizationId: string; readonly destination: string; readonly businessName: string; readonly customerDisplayName: string; readonly conversationId: string; readonly handoverContext: TrustedAutomationHandoverContext | null }
   | { readonly allowed: false; readonly organizationId: string; readonly reason: 'INVALID_ASSIGNMENT' | 'INVALID_MEMBERSHIP' | 'INVALID_NOTIFICATION_RECIPIENT' | 'INVALID_TEAM_MEMBERSHIP' | 'FALLBACK_CONFIGURATION_CHANGED' | 'EMAIL_DISABLED' | 'DESTINATION_CHANGED' | 'RESOURCE_UNAVAILABLE' };
 
 @Injectable()
@@ -80,8 +92,158 @@ export class DrizzleNotificationRepository {
     const [row] = await this.db.select({ id: handoverAssignments.id }).from(handoverAssignments).where(and(
       eq(handoverAssignments.organizationId, organizationId),
       eq(handoverAssignments.conversationId, conversationId),
+      sql`${handoverAssignments.status} in ('WAITING', 'ASSIGNED')`,
     ));
     return row !== undefined;
+  }
+
+  async handoverInactivitySettings(organizationId: string): Promise<HandoverInactivitySettings> {
+    const [settings] = await this.db.select({
+      handoverAutoCloseEnabled: organizationNotificationSettings.handoverAutoCloseEnabled,
+      handoverInactivityMinutes: organizationNotificationSettings.handoverInactivityMinutes,
+    }).from(organizationNotificationSettings).where(eq(organizationNotificationSettings.organizationId, organizationId));
+    return settings ?? { handoverAutoCloseEnabled: true, handoverInactivityMinutes: defaultHandoverInactivityMinutes };
+  }
+
+  async saveHandoverInactivitySettings(organizationId: string, settings: HandoverInactivitySettings): Promise<HandoverInactivitySettings> {
+    return this.db.transaction(async (tx) => {
+      await tx.insert(organizationNotificationSettings).values({ organizationId }).onConflictDoNothing();
+      await tx.update(organizationNotificationSettings).set({ ...settings, updatedAt: new Date() })
+        .where(eq(organizationNotificationSettings.organizationId, organizationId));
+      // A configuration change applies to currently active handovers, not only future ones.
+      await tx.update(handoverAssignments).set({
+        autoCloseAt: settings.handoverAutoCloseEnabled
+          ? sql`${handoverAssignments.lastActivityAt} + (${settings.handoverInactivityMinutes} * interval '1 minute')`
+          : null,
+      }).where(and(
+        eq(handoverAssignments.organizationId, organizationId),
+        sql`${handoverAssignments.status} in ('WAITING', 'ASSIGNED')`,
+      ));
+      return settings;
+    });
+  }
+
+  async recordCustomerActivityInTransaction(
+    tx: Parameters<SlotlyFlowDatabase['transaction']>[0] extends (tx: infer Transaction) => unknown ? Transaction : never,
+    organizationId: string,
+    conversationId: string,
+    activityAt: Date,
+  ): Promise<boolean> {
+    return this.recordActivityInTransaction(tx, organizationId, conversationId, activityAt, 'CUSTOMER');
+  }
+
+  async recordHumanActivityInTransaction(
+    tx: Parameters<SlotlyFlowDatabase['transaction']>[0] extends (tx: infer Transaction) => unknown ? Transaction : never,
+    organizationId: string,
+    conversationId: string,
+    activityAt: Date,
+  ): Promise<boolean> {
+    return this.recordActivityInTransaction(tx, organizationId, conversationId, activityAt, 'HUMAN');
+  }
+
+  private async recordActivityInTransaction(
+    tx: Parameters<SlotlyFlowDatabase['transaction']>[0] extends (tx: infer Transaction) => unknown ? Transaction : never,
+    organizationId: string,
+    conversationId: string,
+    activityAt: Date,
+    source: 'CUSTOMER' | 'HUMAN',
+  ): Promise<boolean> {
+    // The caller holds its inbound transaction until this update commits.
+    // Avoid a settings write for conversations without a human handover.
+    const [candidate] = await tx.select({ id: handoverAssignments.id }).from(handoverAssignments).where(and(
+      eq(handoverAssignments.organizationId, organizationId),
+      eq(handoverAssignments.conversationId, conversationId),
+      sql`${handoverAssignments.status} in ('WAITING', 'ASSIGNED')`,
+    ));
+    if (candidate === undefined) return false;
+    // Lock settings before the assignment, matching configuration writes and close.
+    await tx.insert(organizationNotificationSettings).values({ organizationId }).onConflictDoNothing();
+    const [settings] = await tx.select().from(organizationNotificationSettings)
+      .where(eq(organizationNotificationSettings.organizationId, organizationId)).for('update');
+    if (settings === undefined) throw new Error('Handover settings are unavailable.');
+    const [active] = await tx.select().from(handoverAssignments).where(and(
+      eq(handoverAssignments.organizationId, organizationId),
+      eq(handoverAssignments.conversationId, conversationId),
+      sql`${handoverAssignments.status} in ('WAITING', 'ASSIGNED')`,
+    )).for('update');
+    if (active === undefined) return false;
+    const lastActivityAt = new Date(Math.max(active.lastActivityAt.getTime(), activityAt.getTime()));
+    await tx.update(handoverAssignments).set({
+      lastActivityAt,
+      lastHumanActivityAt: source === 'HUMAN'
+        ? new Date(Math.max(active.lastHumanActivityAt?.getTime() ?? 0, activityAt.getTime()))
+        : active.lastHumanActivityAt,
+      autoCloseAt: handoverDeadline(lastActivityAt, settings),
+      updatedAt: new Date(),
+    }).where(and(eq(handoverAssignments.organizationId, organizationId), eq(handoverAssignments.id, active.id)));
+    return true;
+  }
+
+  async listDueHandovers(now: Date, limit: number): Promise<readonly { readonly id: string; readonly organizationId: string }[]> {
+    return this.db.select({ id: handoverAssignments.id, organizationId: handoverAssignments.organizationId })
+      .from(handoverAssignments).where(and(
+        sql`${handoverAssignments.status} in ('WAITING', 'ASSIGNED')`,
+        lte(handoverAssignments.autoCloseAt, now),
+      )).orderBy(asc(handoverAssignments.autoCloseAt), asc(handoverAssignments.id)).limit(limit);
+  }
+
+  async closeHandover(input: {
+    readonly organizationId: string;
+    readonly handoverId: string;
+    readonly reason: HandoverCloseReason;
+    readonly actorUserId: string | null;
+    readonly now: Date;
+  }): Promise<HandoverCloseOutcome> {
+    return this.db.transaction(async (tx) => {
+      const [candidate] = await tx.select({ conversationId: handoverAssignments.conversationId })
+        .from(handoverAssignments).where(and(
+          eq(handoverAssignments.organizationId, input.organizationId),
+          eq(handoverAssignments.id, input.handoverId),
+        ));
+      if (candidate === undefined) return 'not_found';
+      // Inbound persistence locks this same conversation before extending the
+      // deadline. Whichever operation gets that lock first defines the order.
+      const [conversation] = await tx.select({ id: conversations.id }).from(conversations).where(and(
+        eq(conversations.organizationId, input.organizationId),
+        eq(conversations.id, candidate.conversationId),
+      )).for('update');
+      if (conversation === undefined) return 'not_found';
+      await tx.insert(organizationNotificationSettings).values({ organizationId: input.organizationId }).onConflictDoNothing();
+      const [settings] = await tx.select().from(organizationNotificationSettings)
+        .where(eq(organizationNotificationSettings.organizationId, input.organizationId)).for('update');
+      if (settings === undefined) throw new Error('Handover settings are unavailable.');
+      const [assignment] = await tx.select().from(handoverAssignments).where(and(
+        eq(handoverAssignments.organizationId, input.organizationId),
+        eq(handoverAssignments.id, input.handoverId),
+      )).for('update');
+      if (assignment === undefined) return 'not_found';
+      if (assignment.status === 'CLOSED') return 'already_closed';
+      if (input.reason === 'inactivity_timeout' && (
+        !settings.handoverAutoCloseEnabled || assignment.autoCloseAt === null || assignment.autoCloseAt.getTime() > input.now.getTime()
+      )) return 'not_due';
+      const [closed] = await tx.update(handoverAssignments).set({
+        status: 'CLOSED', closedAt: input.now, closedReason: input.reason, autoCloseAt: null, updatedAt: input.now,
+      }).where(and(
+        eq(handoverAssignments.organizationId, input.organizationId),
+        eq(handoverAssignments.id, assignment.id),
+        sql`${handoverAssignments.status} in ('WAITING', 'ASSIGNED')`,
+        ...(input.reason === 'inactivity_timeout' ? [lte(handoverAssignments.autoCloseAt, input.now)] : []),
+      )).returning({ id: handoverAssignments.id });
+      if (closed === undefined) return 'not_due';
+      await tx.delete(botConversationStates).where(and(
+        eq(botConversationStates.organizationId, input.organizationId),
+        eq(botConversationStates.conversationId, assignment.conversationId),
+      ));
+      await tx.insert(auditLogs).values({
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        action: 'handover.closed',
+        targetType: 'conversation',
+        targetId: assignment.conversationId,
+        metadata: { handoverAssignmentId: assignment.id, reason: input.reason },
+      });
+      return 'closed';
+    });
   }
 
   async listTeams(organizationId: string): Promise<readonly TeamSummary[]> {
@@ -286,6 +448,7 @@ export class DrizzleNotificationRepository {
       conversationId: conversations.id,
       assignmentId: handoverAssignments.id,
       assignmentStatus: handoverAssignments.status,
+      handoverContext: handoverAssignments.context,
       assignmentConversationId: handoverAssignments.conversationId,
       assignmentTeamId: handoverAssignments.teamId,
       assignmentAssigneeMembershipId: handoverAssignments.assigneeMembershipId,
@@ -348,6 +511,7 @@ export class DrizzleNotificationRepository {
         businessName: row.businessName,
         customerDisplayName: row.customerDisplayName?.trim() || 'a customer',
         conversationId: row.resourceId,
+        handoverContext: row.handoverContext,
       };
     }
 
@@ -393,6 +557,7 @@ export class DrizzleNotificationRepository {
       businessName: row.businessName,
       customerDisplayName: row.customerDisplayName?.trim() || 'a customer',
       conversationId: row.resourceId,
+      handoverContext: row.handoverContext,
     };
   }
 
@@ -472,30 +637,59 @@ export class DrizzleNotificationRepository {
     organizationId: string,
     conversationId: string,
     actorUserId: string | null,
-    options: { readonly preserveExistingAssignment?: boolean } = {},
+    options: {
+      readonly preserveExistingAssignment?: boolean;
+      readonly whatsappConnectionId?: string;
+      readonly customerWhatsAppId?: string;
+      readonly details?: TrustedAutomationHandoverContext;
+    } = {},
   ): Promise<HandoverPublication | undefined> {
     return this.db.transaction(async (tx) => {
       const [conversation] = await tx.select({
         id: conversations.id,
         organizationId: conversations.organizationId,
         customerDisplayName: conversations.customerDisplayName,
+        whatsappConnectionId: conversations.whatsappConnectionId,
+        customerWhatsAppId: conversations.customerWhatsAppId,
         organizationName: organizations.name,
       }).from(conversations).innerJoin(organizations, eq(conversations.organizationId, organizations.id))
         .where(and(eq(conversations.id, conversationId), eq(conversations.organizationId, organizationId))).for('update');
       if (conversation === undefined) return undefined;
+      if (
+        (options.whatsappConnectionId !== undefined && conversation.whatsappConnectionId !== options.whatsappConnectionId)
+        || (options.customerWhatsAppId !== undefined && conversation.customerWhatsAppId !== options.customerWhatsAppId)
+        || (options.details !== undefined && conversation.customerWhatsAppId !== options.details.customerWhatsAppId)
+      ) return undefined;
+      const [contact] = options.details === undefined ? [] : await tx.select({
+        id: contacts.id,
+        isSavedContact: contacts.isSavedContact,
+      }).from(contacts).where(and(
+        eq(contacts.organizationId, organizationId),
+        eq(contacts.whatsappConnectionId, conversation.whatsappConnectionId),
+        eq(contacts.whatsappId, conversation.customerWhatsAppId),
+      ));
+      const handoverContext = options.details === undefined ? null : {
+        ...options.details,
+        answers: { ...options.details.answers },
+        savedContact: contact?.isSavedContact ?? null,
+        contactId: contact?.id ?? null,
+      };
 
+      await tx.insert(organizationNotificationSettings).values({ organizationId }).onConflictDoNothing();
       const [settings] = await tx.select().from(organizationNotificationSettings).where(eq(
         organizationNotificationSettings.organizationId,
         organizationId,
       )).for('update');
       const routing = settings === undefined
-        ? { handoverTeamId: null, fallbackEmailAddresses: [] as readonly string[], emailNotificationsEnabled: true }
+        ? { handoverTeamId: null, fallbackEmailAddresses: [] as readonly string[], emailNotificationsEnabled: true, handoverAutoCloseEnabled: true, handoverInactivityMinutes: defaultHandoverInactivityMinutes }
         : settings;
 
       const [existing] = await tx.select().from(handoverAssignments).where(and(
         eq(handoverAssignments.organizationId, organizationId),
         eq(handoverAssignments.conversationId, conversation.id),
+        sql`${handoverAssignments.status} in ('WAITING', 'ASSIGNED')`,
       )).for('update');
+      if (existing?.status === 'CLOSED') throw new Error('Active handover query returned a closed assignment.');
 
       if (existing !== undefined && (existing.status === 'ASSIGNED' || options.preserveExistingAssignment === true)) {
         const assignee = existing.assigneeMembershipId === null
@@ -515,6 +709,7 @@ export class DrizzleNotificationRepository {
       }
 
       const now = new Date();
+      const autoCloseAt = handoverDeadline(now, routing);
       let assignment = existing;
       let assignee: Awaited<ReturnType<DrizzleNotificationRepository['userForMembership']>> | undefined;
       if (routing.handoverTeamId !== null) {
@@ -543,6 +738,9 @@ export class DrizzleNotificationRepository {
                 teamId: team.id,
                 assigneeMembershipId: selected,
                 status: 'ASSIGNED',
+                context: handoverContext,
+                lastActivityAt: now,
+                autoCloseAt,
                 assignedAt: now,
               }).returning();
             } else {
@@ -565,11 +763,15 @@ export class DrizzleNotificationRepository {
           conversationId: conversation.id,
           teamId: routing.handoverTeamId,
           status: 'WAITING',
+          context: handoverContext,
+          lastActivityAt: now,
+          autoCloseAt,
         }).returning();
       }
-      if (assignment === undefined) throw new Error('Handover assignment persistence failed.');
+      if (assignment === undefined || assignment.status === 'CLOSED') throw new Error('Handover assignment persistence failed.');
 
       const customer = conversation.customerDisplayName?.trim() || 'a customer';
+      const priorityHandover = handoverContext?.requestType === 'damaged_or_incorrect_item';
       if (assignee !== undefined) {
         const notification = await this.ensureNotification(tx, {
           organizationId,
@@ -578,7 +780,7 @@ export class DrizzleNotificationRepository {
           teamId: assignment.teamId,
           handoverAssignmentId: assignment.id,
           resourceId: conversation.id,
-          title: 'New WhatsApp handover assigned to you',
+          title: priorityHandover ? 'Priority WhatsApp handover needs attention' : 'New WhatsApp handover assigned to you',
           body: `A conversation with ${customer} has been assigned to you.`,
           deduplicationKey: `HANDOVER_ASSIGNED:${conversation.id}:${assignment.id}:${assignee.userId}`,
         });
@@ -600,6 +802,7 @@ export class DrizzleNotificationRepository {
           conversationId: conversation.id,
           customer,
           routing,
+          title: priorityHandover ? 'Priority WhatsApp handover needs attention' : 'A WhatsApp handover needs attention',
         });
       }
 
@@ -642,6 +845,7 @@ export class DrizzleNotificationRepository {
       readonly conversationId: string;
       readonly customer: string;
       readonly routing: { readonly fallbackEmailAddresses: readonly string[]; readonly emailNotificationsEnabled: boolean };
+      readonly title: string;
     },
   ): Promise<void> {
     if (input.routing.fallbackEmailAddresses.length > 0) {
@@ -652,7 +856,7 @@ export class DrizzleNotificationRepository {
         teamId: input.teamId,
         handoverAssignmentId: input.assignment.id,
         resourceId: input.conversationId,
-        title: 'A WhatsApp handover needs attention',
+        title: input.title,
         body: `A conversation with ${input.customer} is waiting for a consultant.`,
         deduplicationKey: `HANDOVER_ASSIGNED:${input.conversationId}:${input.assignment.id}:fallback`,
       });
@@ -681,7 +885,7 @@ export class DrizzleNotificationRepository {
       teamId: input.teamId,
       handoverAssignmentId: input.assignment.id,
       resourceId: input.conversationId,
-      title: 'A WhatsApp handover needs attention',
+      title: input.title,
       body: `A conversation with ${input.customer} is waiting for a consultant.`,
       deduplicationKey: `HANDOVER_ASSIGNED:${input.conversationId}:${input.assignment.id}:${recipient.userId}`,
     });

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { ConflictException, Injectable } from '@nestjs/common';
 
-import type { HandoverTestBotState } from './built-in-bot-runtime.types.js';
+import type { HandoverTestBotState, WansatiBotState } from './built-in-bot-runtime.types.js';
 
 const previewSessionTtlMilliseconds = 20 * 60 * 1_000;
 const maximumPreviewSessions = 500;
@@ -14,6 +14,7 @@ export interface BotPreviewSession {
   readonly botDeploymentId: string;
   readonly botVersionId: string;
   state: HandoverTestBotState;
+  wansatiState: WansatiBotState;
   handover: boolean;
   expiresAt: number;
   busy: boolean;
@@ -80,6 +81,7 @@ export class BotPreviewSessionStore {
       botDeploymentId: input.botDeploymentId,
       botVersionId: input.botVersionId,
       state: 'INITIAL',
+      wansatiState: { node: 'INITIAL', answers: {} },
       handover: false,
       expiresAt: now + previewSessionTtlMilliseconds,
       busy: false,
