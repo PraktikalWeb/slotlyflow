@@ -337,6 +337,7 @@ type PreviewChatMessage = {
   readonly text: string;
   readonly time: string;
   readonly options?: readonly BotPreviewOption[];
+  readonly listButtonLabel?: string;
 };
 
 function BotTestPanel({ organizationId }: Readonly<{ organizationId: string }>): React.JSX.Element {
@@ -346,6 +347,7 @@ function BotTestPanel({ organizationId }: Readonly<{ organizationId: string }>):
   const [previewSessionId, setPreviewSessionId] = React.useState<string | null>(null);
   const [handover, setHandover] = React.useState(false);
   const [feedback, setFeedback] = React.useState<string>();
+  const [openListMessageId, setOpenListMessageId] = React.useState<number | null>(null);
   const requestId = React.useRef(0);
   const messageId = React.useRef(0);
   const inFlight = React.useRef(false);
@@ -361,6 +363,7 @@ function BotTestPanel({ organizationId }: Readonly<{ organizationId: string }>):
     setPreviewSessionId(null);
     setHandover(false);
     setFeedback(undefined);
+    setOpenListMessageId(null);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [organizationId]);
 
@@ -402,6 +405,9 @@ function BotTestPanel({ organizationId }: Readonly<{ organizationId: string }>):
       text: message.type === 'text' ? message.text : message.body,
       time: previewTime(),
       ...(message.type === 'interactive' ? { options: message.options } : {}),
+      ...(message.type === 'interactive' && message.listButtonLabel !== undefined
+        ? { listButtonLabel: message.listButtonLabel }
+        : {}),
     }))]);
   };
 
@@ -432,6 +438,7 @@ function BotTestPanel({ organizationId }: Readonly<{ organizationId: string }>):
     setPreviewSessionId(null);
     setHandover(false);
     setFeedback(undefined);
+    setOpenListMessageId(null);
     inFlight.current = false;
   };
 
@@ -440,6 +447,7 @@ function BotTestPanel({ organizationId }: Readonly<{ organizationId: string }>):
     undefined,
   );
   const latestOptionMessageId = latestBotMessage?.options === undefined ? null : latestBotMessage.id;
+  const awaitingInteractiveSelection = latestOptionMessageId !== null && !handover;
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const prevLengthRef = React.useRef(0);
 
@@ -490,7 +498,7 @@ function BotTestPanel({ organizationId }: Readonly<{ organizationId: string }>):
                 <p className="whitespace-pre-wrap text-[14px] leading-snug text-[#111111]">{message.text}</p>
                 {message.options !== undefined ? (
                   <div className="-mx-3 mt-2 border-t border-[#E3E7E5]">
-                    {message.options.map((option) => (
+                    {message.listButtonLabel === undefined ? message.options.map((option) => (
                       <button
                         className="block w-full border-b border-[#E3E7E5] px-3 py-2 text-center text-[13px] font-medium text-[#128C7E] last:border-b-0 hover:bg-[#F5FAF8] focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#128C7E] disabled:cursor-default disabled:text-gray-400 disabled:hover:bg-transparent"
                         disabled={sending || handover || message.id !== latestOptionMessageId}
@@ -500,7 +508,30 @@ function BotTestPanel({ organizationId }: Readonly<{ organizationId: string }>):
                       >
                         {option.label}
                       </button>
-                    ))}
+                    )) : (
+                      <>
+                        <button
+                          aria-expanded={openListMessageId === message.id}
+                          className="block w-full px-3 py-2 text-center text-[13px] font-medium text-[#128C7E] hover:bg-[#F5FAF8] focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#128C7E] disabled:cursor-default disabled:text-gray-400 disabled:hover:bg-transparent"
+                          disabled={sending || handover || message.id !== latestOptionMessageId}
+                          onClick={() => setOpenListMessageId((current) => current === message.id ? null : message.id)}
+                          type="button"
+                        >
+                          {message.listButtonLabel}
+                        </button>
+                        {openListMessageId === message.id ? message.options.map((option) => (
+                          <button
+                            className="block w-full border-t border-[#E3E7E5] px-3 py-2 text-left text-[13px] font-medium text-[#128C7E] hover:bg-[#F5FAF8] focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#128C7E] disabled:cursor-default disabled:text-gray-400 disabled:hover:bg-transparent"
+                            disabled={sending || handover || message.id !== latestOptionMessageId}
+                            key={option.id}
+                            onClick={() => { setOpenListMessageId(null); void submit({ type: 'interactive_reply', optionId: option.id }, option.label); }}
+                            type="button"
+                          >
+                            {option.label}
+                          </button>
+                        )) : null}
+                      </>
+                    )}
                   </div>
                 ) : null}
                 <span className="float-right ml-3 mt-1 text-[10px] text-gray-500">{message.time}</span>
@@ -516,10 +547,10 @@ function BotTestPanel({ organizationId }: Readonly<{ organizationId: string }>):
         <div className="flex flex-1 items-center rounded-full border border-[var(--border-strong)] bg-[var(--surface-subtle)] px-4 py-2">
           <input
             className="w-full border-none bg-transparent text-[14px] text-[var(--ink)] outline-none placeholder:text-[var(--ink-tertiary)]"
-            disabled={sending || handover}
+            disabled={sending || handover || awaitingInteractiveSelection}
             maxLength={4096}
             onChange={(event) => setInput(event.target.value)}
-            placeholder={handover ? 'Reset the test to start again' : 'Type a test message...'}
+            placeholder={handover ? 'Reset the test to start again' : awaitingInteractiveSelection ? 'Choose an option above' : 'Type a test message...'}
             type="text"
             value={input}
           />
@@ -527,7 +558,7 @@ function BotTestPanel({ organizationId }: Readonly<{ organizationId: string }>):
         <button
           aria-label="Send test message"
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#128C7E] text-white disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={sending || handover || input.trim().length === 0}
+          disabled={sending || handover || awaitingInteractiveSelection || input.trim().length === 0}
           type="submit"
         >
           <SemanticIcon className={`ml-0.5 h-4 w-4 ${sending ? 'animate-spin' : ''}`} concept={sending ? 'loader' : 'arrowRight'} size="control" />

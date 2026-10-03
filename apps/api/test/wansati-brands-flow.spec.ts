@@ -30,20 +30,38 @@ describe('WANSATI_BRANDS_V1 deterministic flow', () => {
     expect(isTrustedBotImplementationKey('WANSATI_BRANDS_V1')).toBe(true);
     expect(isTrustedBotImplementationKey('UNREVIEWED_MODULE')).toBe(false);
   });
-  it('welcomes without interpreting the first message and opens six categories', () => {
+  it('welcomes without interpreting the first message and opens the New Enquiry list', () => {
     const welcome = text(initial, 'How long is delivery?');
     expect(welcome.stateAfter.node).toBe('ENTRY');
-    expect(welcome.output).toMatchObject({ body: expect.stringContaining('Welcome to Wansati Brands 🛍️') });
-    const main = text(welcome.stateAfter, '2');
+    expect(welcome.output).toMatchObject({
+      type: 'interactive', body: expect.stringContaining('Welcome to Wansati Brands 🛍️'),
+      options: [{ id: 'EXISTING', label: 'Existing Matter' }, { id: 'NEW', label: 'New Enquiry' }],
+    });
+    const main = option(welcome.stateAfter, 'NEW');
     expect(main.stateAfter.node).toBe('MAIN');
-    expect(main.output).toMatchObject({ type: 'text', text: expect.stringContaining('6. Speak to Sales') });
-    const recovery = text(main.stateAfter, 'How long is delivery?');
+    expect(main.output).toMatchObject({
+      type: 'interactive', body: 'What can we help you with?', listButtonLabel: 'Choose an enquiry',
+      options: [
+        { id: 'wansati_enquiry_shop_products', label: 'Shop & Products' },
+        { id: 'wansati_enquiry_orders_delivery', label: 'Orders & Delivery' },
+        { id: 'wansati_enquiry_payments', label: 'Payments' },
+        { id: 'wansati_enquiry_returns_exchanges', label: 'Returns & Exchanges' },
+        { id: 'wansati_enquiry_custom_designs', label: 'Custom Designs' },
+        { id: 'wansati_enquiry_speak_sales', label: 'Speak to Sales' },
+        { id: 'wansati_enquiry_back', label: 'Back' },
+      ],
+    });
+    expect(main.output?.type === 'interactive' ? main.output.body : '').not.toMatch(/(?:^|\n)\d+\.\s/);
+    expect(option(main.stateAfter, 'wansati_enquiry_orders_delivery').stateAfter.node).toBe('ORDERS');
+    const recovery = text(main.stateAfter, '1');
     expect(recovery.stateAfter.node).toBe('MAIN');
-    expect(recovery.output).toMatchObject({ type: 'text', text: expect.stringContaining('Please choose one of the available options') });
+    expect(recovery.output).toMatchObject({
+      type: 'interactive', body: expect.stringContaining('Please choose one of the available options'), listButtonLabel: 'Choose an enquiry',
+    });
   });
 
   it('collects the exact existing-matter explanation and requests handover', () => {
-    const collecting = text({ node: 'ENTRY', answers: {} }, '1');
+    const collecting = option({ node: 'ENTRY', answers: {} }, 'EXISTING');
     expect(collecting.stateAfter.node).toBe('COLLECT:existing_matter:0');
     const completed = text(collecting.stateAfter, '  Please call me about my order.  ');
     expect(completed.requestType).toBe('existing_matter');
@@ -51,20 +69,22 @@ describe('WANSATI_BRANDS_V1 deterministic flow', () => {
     expect(completed.handoverRequested).toBe(true);
   });
 
-  it('navigates Back and Main Menu without keyword routing', () => {
-    const shop = text({ node: 'MAIN', answers: {} }, '1');
+  it('navigates Back and Main Menu through stable interactive IDs', () => {
+    const shop = option({ node: 'MAIN', answers: {} }, 'wansati_enquiry_shop_products');
     expect(shop.stateAfter.node).toBe('SHOP');
-    expect(text(shop.stateAfter, '4').stateAfter.node).toBe('MAIN');
-    expect(text(shop.stateAfter, '5').stateAfter.node).toBe('MAIN');
-    const payments = text({ node: 'MAIN', answers: {} }, '3');
+    expect(option(shop.stateAfter, 'BACK').stateAfter.node).toBe('MAIN');
+    expect(option(shop.stateAfter, 'MAIN_MENU').stateAfter.node).toBe('MAIN');
+    const payments = option({ node: 'MAIN', answers: {} }, 'wansati_enquiry_payments');
     expect(payments.stateAfter.node).toBe('PAYMENTS');
     expect(option(payments.stateAfter, 'BACK').stateAfter.node).toBe('MAIN');
   });
 
   it('returns approved delivery and Payflex text', () => {
-    const delivery = text({ node: 'DELIVERY', answers: {} }, '1');
+    const delivery = option({ node: 'DELIVERY', answers: {} }, 'DURATION');
     expect(delivery.output).toMatchObject({ body: expect.stringContaining('3–4 days') });
-    const payflex = text({ node: 'PAYFLEX', answers: {} }, '2');
+    expect(delivery.output).toMatchObject({ type: 'interactive', options: expect.any(Array) });
+    expect(delivery.output?.type === 'interactive' ? delivery.output.listButtonLabel : undefined).toBeUndefined();
+    const payflex = option({ node: 'PAYFLEX', answers: {} }, 'PAYFLEX_HOW');
     expect(payflex.output).toMatchObject({ body: expect.stringContaining('Available plans, payment dates and approval') });
   });
 
@@ -103,18 +123,18 @@ describe('WANSATI_BRANDS_V1 deterministic flow', () => {
   });
 
   it('does not invent stock, payment methods, return windows, or size-guide data', () => {
-    const size = text({ node: 'SIZE', answers: {} }, '1');
+    const size = option({ node: 'SIZE', answers: {} }, 'SIZE_GUIDE');
     expect(size.output).toMatchObject({ body: expect.stringContaining('not configured') });
-    const payment = text({ node: 'PAYMENTS', answers: {} }, '2');
+    const payment = option({ node: 'PAYMENTS', answers: {} }, 'PAYMENT_INFO');
     expect(payment.output).toMatchObject({ body: expect.stringContaining('For other payment information') });
-    const refund = text({ node: 'RETURNS', answers: {} }, '3');
+    const refund = option({ node: 'RETURNS', answers: {} }, 'REFUND');
     expect(refund.output).toMatchObject({ body: expect.stringContaining('not a return-request window') });
   });
 
   it('uses the configured website and routes order-specific FAQs to a person', () => {
-    const website = text({ node: 'PLACE', answers: {} }, '1');
+    const website = option({ node: 'PLACE', answers: {} }, 'WEBSITE');
     expect(website.output).toMatchObject({ body: expect.stringContaining('https://www.wansatibrands.co.za/') });
-    const dispatch = text({ node: 'DELIVERY', answers: {} }, '2');
+    const dispatch = option({ node: 'DELIVERY', answers: {} }, 'DISPATCH');
     expect(dispatch.output).toMatchObject({ body: expect.stringContaining('For your specific order') });
     expect(option(dispatch.stateAfter, 'TRACK').stateAfter.node).toBe('COLLECT:order_tracking:0');
   });

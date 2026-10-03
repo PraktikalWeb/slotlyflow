@@ -150,6 +150,7 @@ export class OutboundWhatsAppMessageService {
           ...providerContext,
           body: input.content.body,
           options: input.content.options,
+          listButtonLabel: input.content.listButtonLabel,
         })
         : await this.messagingProvider.sendText({ ...providerContext, text: input.content.body });
       try {
@@ -271,21 +272,25 @@ function normalizeBotOutput(output: StructuredBotOutput): OutboundMessageContent
   }
   const body = output.body.trim();
   const options = output.options.map((option) => ({ id: option.id, label: option.label.trim() }));
+  const listButtonLabel = output.listButtonLabel?.trim() ?? null;
+  const rendersAsList = options.length > 3;
   if (
     body.length === 0
     || body.length > 1_024
     || options.length < 1
-    || options.length > 3
+    || options.length > 10
     || new Set(options.map((option) => option.id)).size !== options.length
     || options.some((option) => (
       !interactiveOptionIdPattern.test(option.id)
       || option.label.length === 0
-      || option.label.length > 20
+      || option.label.length > (rendersAsList ? 24 : 20)
     ))
+    || (rendersAsList && (listButtonLabel === null || listButtonLabel.length === 0 || listButtonLabel.length > 20))
+    || (!rendersAsList && listButtonLabel !== null)
   ) {
     throw new BadRequestException({ code: 'WHATSAPP_INTERACTIVE_MESSAGE_INVALID' });
   }
-  return { type: 'INTERACTIVE', body, options };
+  return { type: 'INTERACTIVE', body, options, listButtonLabel };
 }
 
 function responseFromMessage(message: PersistedOutboundMessage): SendConversationTextResponse {

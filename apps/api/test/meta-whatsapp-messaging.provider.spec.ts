@@ -54,4 +54,34 @@ describe('MetaWhatsAppMessagingProvider', () => {
     await expect(rejected.sendText(message)).rejects.toMatchObject({ kind: 'REJECTED' } satisfies Partial<WhatsAppMessagingProviderError>);
     await expect(ambiguous.sendText(message)).rejects.toMatchObject({ kind: 'OUTCOME_UNKNOWN' } satisfies Partial<WhatsAppMessagingProviderError>);
   });
+
+  it('renders four or more reviewed choices as a Meta interactive list with stable row IDs', async () => {
+    const request = vi.fn<typeof fetch>(async (_url, init) => {
+      expect(init?.body).toBe(JSON.stringify({
+        messaging_product: 'whatsapp', recipient_type: 'individual', to: '16505551234', type: 'interactive',
+        interactive: {
+          type: 'list', body: { text: 'What can we help you with?' }, action: {
+            button: 'Choose an enquiry', sections: [{ title: 'Options', rows: [
+              { id: 'wansati_enquiry_shop_products', title: 'Shop & Products' },
+              { id: 'wansati_enquiry_orders_delivery', title: 'Orders & Delivery' },
+              { id: 'wansati_enquiry_payments', title: 'Payments' },
+              { id: 'wansati_enquiry_returns_exchanges', title: 'Returns & Exchanges' },
+            ] }],
+          },
+        },
+      }));
+      return new Response(JSON.stringify({ messages: [{ id: 'wamid.outbound-list' }] }), { status: 200 });
+    });
+    const provider = new MetaWhatsAppMessagingProvider(config, credentialStore(), request);
+
+    await expect(provider.sendInteractive({
+      senderPhoneNumberId: '106540352242922', recipientWhatsAppId: '16505551234', credentialReference,
+      body: 'What can we help you with?', listButtonLabel: 'Choose an enquiry', options: [
+        { id: 'wansati_enquiry_shop_products', label: 'Shop & Products' },
+        { id: 'wansati_enquiry_orders_delivery', label: 'Orders & Delivery' },
+        { id: 'wansati_enquiry_payments', label: 'Payments' },
+        { id: 'wansati_enquiry_returns_exchanges', label: 'Returns & Exchanges' },
+      ],
+    })).resolves.toMatchObject({ providerMessageId: 'wamid.outbound-list' });
+  });
 });

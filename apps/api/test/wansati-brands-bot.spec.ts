@@ -156,13 +156,30 @@ describe('Wansati Brands trusted handler', () => {
       };
       const welcome = await preview.execute(organization, { previewSessionId: null, input: { type: 'text', text: 'Hi' } });
       expect(welcome.messages[0]).toMatchObject({ body: expect.stringContaining('Welcome to Wansati Brands 🛍️') });
-      const collection = await preview.execute(organization, { previewSessionId: welcome.previewSessionId, input: { type: 'text', text: '1' } });
+      const collection = await preview.execute(organization, {
+        previewSessionId: welcome.previewSessionId,
+        input: { type: 'interactive_reply', optionId: 'EXISTING' },
+      });
       expect(collection.messages[0]).toMatchObject({ text: expect.stringContaining('Please briefly tell us') });
       const handover = await preview.execute(organization, { previewSessionId: welcome.previewSessionId, input: { type: 'text', text: 'My order needs help' } });
       expect(handover.handover).toBe(true);
       expect(handover.messages[0]).toMatchObject({ text: expect.stringContaining('representative will continue assisting') });
       expect(await preview.execute(organization, { previewSessionId: welcome.previewSessionId, input: { type: 'text', text: 'Still here' } }))
         .toMatchObject({ handover: true, messages: [] });
+
+      const newEnquiryWelcome = await preview.execute(organization, { previewSessionId: null, input: { type: 'text', text: 'Hi again' } });
+      const enquiryMenu = await preview.execute(organization, {
+        previewSessionId: newEnquiryWelcome.previewSessionId,
+        input: { type: 'interactive_reply', optionId: 'NEW' },
+      });
+      expect(enquiryMenu.messages[0]).toMatchObject({
+        body: 'What can we help you with?', listButtonLabel: 'Choose an enquiry',
+      });
+      const orders = await preview.execute(organization, {
+        previewSessionId: newEnquiryWelcome.previewSessionId,
+        input: { type: 'interactive_reply', optionId: 'wansati_enquiry_orders_delivery' },
+      });
+      expect(orders.messages[0]).toMatchObject({ body: 'Orders & Delivery' });
     } finally {
       vi.useRealTimers();
     }
@@ -176,7 +193,12 @@ describe('Wansati Brands trusted handler', () => {
 
   it('keeps preview-style effects injectable without any Meta or SMTP calls', async () => {
     const test = harness({ node: 'MAIN', answers: {} });
-    expect(await test.bot.execute(runtimeContext('3'))).toBe('EXECUTED');
+    const context = {
+      ...runtimeContext(''),
+      messageType: 'INTERACTIVE_REPLY' as const,
+      input: { type: 'interactive_reply' as const, optionId: 'wansati_enquiry_payments' },
+    };
+    expect(await test.bot.execute(context)).toBe('EXECUTED');
     expect(test.state().node).toBe('PAYMENTS');
     expect(test.establishHandover).not.toHaveBeenCalled();
   });

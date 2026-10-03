@@ -325,17 +325,8 @@ function normalizeMessage(
   }
 
   if (message.type === 'interactive') {
-    if (
-      !isRecord(message.interactive)
-      || message.interactive.type !== 'button_reply'
-      || !isRecord(message.interactive.button_reply)
-      || !isIdentifier(message.interactive.button_reply.id)
-      || typeof message.interactive.button_reply.title !== 'string'
-      || message.interactive.button_reply.title.length === 0
-      || message.interactive.button_reply.title.length > maximumTextLength
-    ) {
-      throw new MetaWebhookPayloadError();
-    }
+    const reply = normalizeInteractiveReply(message.interactive);
+    if (reply === undefined) throw new MetaWebhookPayloadError();
     return {
       provider: 'META',
       providerMessageId: message.id,
@@ -344,8 +335,8 @@ function normalizeMessage(
       customerDisplayName: displayName,
       occurredAt,
       messageType: 'INTERACTIVE_REPLY',
-      textBody: message.interactive.button_reply.title,
-      interactiveOptionId: message.interactive.button_reply.id,
+      textBody: reply.title,
+      interactiveOptionId: reply.id,
     };
   }
 
@@ -360,6 +351,20 @@ function normalizeMessage(
     textBody: null,
     interactiveOptionId: null,
   };
+}
+
+/** Meta sends the same stable row/button ID for both interactive response kinds. */
+function normalizeInteractiveReply(value: unknown): { readonly id: string; readonly title: string } | undefined {
+  if (!isRecord(value) || (value.type !== 'button_reply' && value.type !== 'list_reply')) return undefined;
+  const reply = value.type === 'button_reply' ? value.button_reply : value.list_reply;
+  if (
+    !isRecord(reply)
+    || !isIdentifier(reply.id)
+    || typeof reply.title !== 'string'
+    || reply.title.length === 0
+    || reply.title.length > maximumTextLength
+  ) return undefined;
+  return { id: reply.id, title: reply.title };
 }
 
 function contactsByWhatsAppId(value: unknown): ReadonlyMap<string, string | null> {

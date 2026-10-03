@@ -55,6 +55,24 @@ describe('Meta WhatsApp webhook normalization', () => {
     expect(normalized.messages[0]).toMatchObject({ messageType: 'UNSUPPORTED', textBody: null });
   });
 
+  it('normalizes Meta button and list replies to the same stable interactive option ID', () => {
+    const button = normalizeMetaWhatsAppWebhook(inboundPayload({
+      from: '16505551234', id: `${messageId}-button`, timestamp: '1749416383', type: 'interactive',
+      interactive: { type: 'button_reply', button_reply: { id: 'wansati_enquiry_payments', title: 'Payments' } },
+    }));
+    const list = normalizeMetaWhatsAppWebhook(inboundPayload({
+      from: '16505551234', id: `${messageId}-list`, timestamp: '1749416383', type: 'interactive',
+      interactive: { type: 'list_reply', list_reply: { id: 'wansati_enquiry_orders_delivery', title: 'Orders & Delivery' } },
+    }));
+
+    expect(button.messages[0]).toMatchObject({
+      messageType: 'INTERACTIVE_REPLY', interactiveOptionId: 'wansati_enquiry_payments', textBody: 'Payments',
+    });
+    expect(list.messages[0]).toMatchObject({
+      messageType: 'INTERACTIVE_REPLY', interactiveOptionId: 'wansati_enquiry_orders_delivery', textBody: 'Orders & Delivery',
+    });
+  });
+
   it('distinguishes provider status events from inbound messages and ignores irrelevant changes', () => {
     const normalized = normalizeMetaWhatsAppWebhook({
       object: 'whatsapp_business_account',

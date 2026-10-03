@@ -1,18 +1,23 @@
 import type { NormalizedBotInput, StructuredBotOutput, WansatiBotState, WansatiTransitionDecision } from './built-in-bot-runtime.types.js';
 
 type Choice = { readonly id: string; readonly label: string; readonly target: string };
-type Menu = { readonly heading: string; readonly parent: string | null; readonly choices: readonly Choice[] };
+type Menu = {
+  readonly heading: string;
+  readonly parent: string | null;
+  readonly choices: readonly Choice[];
+  readonly listButtonLabel?: string;
+};
 type Collection = { readonly requestType: string; readonly fields: readonly { readonly key: string; readonly prompt: string; readonly optional?: boolean }[] };
 
 const choice = (id: string, label: string, target: string): Choice => ({ id, label, target });
 const menus: Readonly<Record<string, Menu>> = {
-  ENTRY: { heading: 'Welcome to Wansati Brands 🛍️\n\nHow can we assist you today?', parent: null, choices: [choice('EXISTING', 'Continue an Existing Matter', 'COLLECT:existing_matter:0'), choice('NEW', 'Start a New Enquiry', 'MAIN')] },
-  MAIN: { heading: 'Please choose a Wansati Brands enquiry:', parent: 'ENTRY', choices: [choice('SHOP', 'Shop & Products', 'SHOP'), choice('ORDERS', 'Orders & Delivery', 'ORDERS'), choice('PAYMENTS', 'Payments', 'PAYMENTS'), choice('RETURNS', 'Returns & Exchanges', 'RETURNS'), choice('CUSTOM', 'Custom Designs', 'CUSTOM'), choice('SALES', 'Speak to Sales', 'COLLECT:sales_assistance:0')] },
+  ENTRY: { heading: 'Welcome to Wansati Brands 🛍️\n\nHow can we assist you today?', parent: null, choices: [choice('EXISTING', 'Existing Matter', 'COLLECT:existing_matter:0'), choice('NEW', 'New Enquiry', 'MAIN')] },
+  MAIN: { heading: 'What can we help you with?', parent: 'ENTRY', listButtonLabel: 'Choose an enquiry', choices: [choice('wansati_enquiry_shop_products', 'Shop & Products', 'SHOP'), choice('wansati_enquiry_orders_delivery', 'Orders & Delivery', 'ORDERS'), choice('wansati_enquiry_payments', 'Payments', 'PAYMENTS'), choice('wansati_enquiry_returns_exchanges', 'Returns & Exchanges', 'RETURNS'), choice('wansati_enquiry_custom_designs', 'Custom Designs', 'CUSTOM'), choice('wansati_enquiry_speak_sales', 'Speak to Sales', 'COLLECT:sales_assistance:0')] },
   SHOP: { heading: 'Shop & Products', parent: 'MAIN', choices: [choice('PLACE', 'Place an Order', 'PLACE'), choice('AVAILABILITY', 'Product Availability', 'COLLECT:product_availability:0'), choice('SIZE', 'Size Guide & Fit Assistance', 'SIZE')] },
   PLACE: { heading: 'Place an Order', parent: 'SHOP', choices: [choice('WEBSITE', 'Shop on the Website', 'FAQ:WEBSITE'), choice('WA_ORDER', 'Order Through WhatsApp', 'COLLECT:whatsapp_order:0'), choice('CHOOSE', 'Help Choosing a Product', 'COLLECT:product_selection:0')] },
-  SIZE: { heading: 'Size Guide & Fit Assistance', parent: 'SHOP', choices: [choice('SIZE_GUIDE', 'View Size Guide', 'FAQ:SIZE_GUIDE'), choice('MEASUREMENTS', 'What Measurements Do I Need?', 'FAQ:MEASUREMENTS'), choice('BETWEEN', "I'm Between Sizes", 'COLLECT:between_sizes:0'), choice('STRETCH', 'Does This Item Stretch?', 'COLLECT:stretch:0'), choice('FIT_HELP', 'Help With My Measurements', 'COLLECT:fit_help:0'), choice('SIZE_EXCHANGE', 'Exchange for Another Size', 'COLLECT:exchange_item:0')] },
+  SIZE: { heading: 'Size & Fit Guide', parent: 'SHOP', choices: [choice('SIZE_GUIDE', 'View Size Guide', 'FAQ:SIZE_GUIDE'), choice('MEASUREMENTS', 'Measurements Needed', 'FAQ:MEASUREMENTS'), choice('BETWEEN', "I'm Between Sizes", 'COLLECT:between_sizes:0'), choice('STRETCH', 'Item Stretch', 'COLLECT:stretch:0'), choice('FIT_HELP', 'Measurement Help', 'COLLECT:fit_help:0'), choice('SIZE_EXCHANGE', 'Exchange Size', 'COLLECT:exchange_item:0')] },
   ORDERS: { heading: 'Orders & Delivery', parent: 'MAIN', choices: [choice('DELIVERY', 'Delivery Information', 'DELIVERY'), choice('URGENT', 'Urgent Order / Delivery', 'COLLECT:urgent_order:0'), choice('TRACK', 'Track My Order', 'COLLECT:order_tracking:0')] },
-  DELIVERY: { heading: 'Delivery Information', parent: 'ORDERS', choices: [choice('DURATION', 'How Long Does Delivery Take?', 'FAQ:DURATION'), choice('DISPATCH', 'When Will My Order Be Dispatched?', 'FAQ:DISPATCH'), choice('SPECIFIC_DATE', 'I Need It by a Specific Date', 'COLLECT:urgent_order:0')] },
+  DELIVERY: { heading: 'Delivery Information', parent: 'ORDERS', choices: [choice('DURATION', 'Delivery Timing', 'FAQ:DURATION'), choice('DISPATCH', 'Dispatch Timing', 'FAQ:DISPATCH'), choice('SPECIFIC_DATE', 'Need by a Date', 'COLLECT:urgent_order:0')] },
   PAYMENTS: { heading: 'Payments', parent: 'MAIN', choices: [choice('PAYFLEX', 'Payflex / Instalments', 'PAYFLEX'), choice('PAYMENT_INFO', 'Payment Information', 'FAQ:PAYMENT_INFO')] },
   PAYFLEX: { heading: 'Payflex / Instalments', parent: 'PAYMENTS', choices: [choice('PAYFLEX_CHECKOUT', 'Payflex at Checkout', 'FAQ:PAYFLEX_CHECKOUT'), choice('PAYFLEX_HOW', 'How Does Payflex Work?', 'FAQ:PAYFLEX_HOW')] },
   RETURNS: { heading: 'Returns & Exchanges', parent: 'MAIN', choices: [choice('RETURN', 'Return an Item', 'COLLECT:return_item:0'), choice('EXCHANGE', 'Exchange an Item', 'COLLECT:exchange_item:0'), choice('REFUND', 'Refund Information', 'FAQ:REFUND'), choice('COURIER', 'Return Courier Costs', 'FAQ:COURIER'), choice('DAMAGED', 'Damaged / Incorrect Item', 'COLLECT:damaged_or_incorrect_item:0')] },
@@ -104,15 +109,19 @@ export function decideWansatiTransition(state: WansatiBotState, input: Normalize
 }
 
 function selectedOption(input: NormalizedBotInput, choices: readonly Choice[]): Choice | undefined {
-  if (input.type === 'interactive_reply') return choices.find((item) => item.id === input.optionId);
-  // Numeric replies are explicit menu selections, never natural-language or keyword matching.
-  return /^\d{1,2}$/.test(input.text.trim()) ? choices[Number(input.text.trim()) - 1] : undefined;
+  return input.type === 'interactive_reply'
+    ? choices.find((item) => item.id === input.optionId)
+    : undefined;
 }
 
 function menuChoices(key: string): readonly Choice[] {
   const menu = menus[key];
   if (menu === undefined) throw new Error('Unknown menu.');
-  return [...menu.choices, ...(menu.parent === null ? [] : [choice('BACK', 'Back', menu.parent)]), ...(key === 'MAIN' ? [] : [choice('MAIN_MENU', 'Main Menu', 'MAIN')])];
+  return [
+    ...menu.choices,
+    ...(menu.parent === null ? [] : [choice(key === 'MAIN' ? 'wansati_enquiry_back' : 'BACK', 'Back', menu.parent)]),
+    ...(key === 'MAIN' || key === 'ENTRY' ? [] : [choice('MAIN_MENU', 'Main Menu', 'MAIN')]),
+  ];
 }
 
 function navigationChoices(parent: string): readonly Choice[] {
@@ -144,14 +153,11 @@ function showMenu(key: string, answers: Readonly<Record<string, string>>, recove
   if (menu === undefined) throw new Error('Unknown menu.');
   const choices = menuChoices(key);
   const intro = recovering ? 'Please choose one of the available options below so we can assist you.\n\n' : '';
-  if (key === 'ENTRY') return {
+  return {
     stateAfter: { node: key, answers },
-    output: { type: 'interactive', body: `${intro}${menu.heading}\n\nContinue an Existing Matter or Start a New Enquiry:`, options: [
-      { id: 'EXISTING', label: 'Existing Matter' }, { id: 'NEW', label: 'New Enquiry' },
-    ] },
+    output: presentChoices(`${intro}${menu.heading}`, choices, menu.listButtonLabel),
     handoverRequested: false,
   };
-  return { stateAfter: { node: key, answers }, output: presentChoices(`${intro}${menu.heading}`, choices), handoverRequested: false };
 }
 
 function showFaq(key: string, config: WansatiFlowConfig, recovering = false): WansatiTransitionDecision {
@@ -171,9 +177,13 @@ function prompt(state: WansatiBotState, text: string): WansatiTransitionDecision
   return { stateAfter: state, output: { type: 'text', text }, handoverRequested: false };
 }
 
-function presentChoices(body: string, choices: readonly Choice[]): StructuredBotOutput {
-  if (choices.length <= 3 && choices.every((item) => item.label.length <= 20)) {
-    return { type: 'interactive', body, options: choices.map(({ id, label }) => ({ id, label })) };
-  }
-  return { type: 'text', text: `${body}\n\n${choices.map((item, index) => `${index + 1}. ${item.label}`).join('\n')}\n\nReply with the number of your choice.` };
+function presentChoices(
+  body: string,
+  choices: readonly Choice[],
+  listButtonLabel?: string,
+): StructuredBotOutput {
+  const options = choices.map(({ id, label }) => ({ id, label }));
+  return choices.length <= 3
+    ? { type: 'interactive', body, options }
+    : { type: 'interactive', body, options, listButtonLabel: listButtonLabel ?? 'Choose an option' };
 }

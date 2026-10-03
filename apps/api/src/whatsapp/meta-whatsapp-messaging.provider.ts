@@ -46,17 +46,19 @@ export class MetaWhatsAppMessagingProvider implements WhatsAppMessagingProvider 
       !numericIdentifier.test(message.senderPhoneNumberId)
       || !numericIdentifier.test(message.recipientWhatsAppId)
       || typeof message.body !== 'string' || message.body.length === 0 || message.body.length > 1_024
-      || message.options.length < 1 || message.options.length > 3
+      || message.options.length < 1 || message.options.length > 10
       || message.options.some((option) => (
         !providerMessageIdentifier.test(option.id)
         || option.label.length === 0
-        || option.label.length > 20
+        || option.label.length > (message.options.length > 3 ? 24 : 20)
       ))
+      || (message.options.length > 3 && (message.listButtonLabel === null || message.listButtonLabel.length === 0 || message.listButtonLabel.length > 20))
+      || (message.options.length <= 3 && message.listButtonLabel !== null)
     ) {
       throw new WhatsAppMessagingProviderError('REJECTED', 'LOCAL_REQUEST_INVALID');
     }
 
-    return this.send(message, {
+    if (message.options.length <= 3) return this.send(message, {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to: message.recipientWhatsAppId,
@@ -69,6 +71,27 @@ export class MetaWhatsAppMessagingProvider implements WhatsAppMessagingProvider 
             type: 'reply',
             reply: { id: option.id, title: option.label },
           })),
+        },
+      },
+    });
+
+    if (message.listButtonLabel === null) {
+      throw new WhatsAppMessagingProviderError('REJECTED', 'LOCAL_REQUEST_INVALID');
+    }
+    return this.send(message, {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: message.recipientWhatsAppId,
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        body: { text: message.body },
+        action: {
+          button: message.listButtonLabel,
+          sections: [{
+            title: 'Options',
+            rows: message.options.map((option) => ({ id: option.id, title: option.label })),
+          }],
         },
       },
     });

@@ -13,7 +13,12 @@ export interface BotPreviewOption {
 
 export type BotPreviewMessage =
   | { readonly type: 'text'; readonly text: string }
-  | { readonly type: 'interactive'; readonly body: string; readonly options: readonly BotPreviewOption[] };
+  | {
+    readonly type: 'interactive';
+    readonly body: string;
+    readonly options: readonly BotPreviewOption[];
+    readonly listButtonLabel?: string;
+  };
 
 export interface BotPreview {
   readonly previewSessionId: string;
@@ -131,7 +136,21 @@ function messageFromPayload(value: unknown): BotPreviewMessage | undefined {
   }
   const options = value.options.map(optionFromPayload);
   if (options.length === 0 || options.some((option) => option === undefined)) return undefined;
-  return { type: 'interactive', body: value.body, options: options as BotPreviewOption[] };
+  const listButtonLabel = 'listButtonLabel' in value ? value.listButtonLabel : undefined;
+  if (listButtonLabel !== undefined) {
+    if (typeof listButtonLabel !== 'string' || listButtonLabel.length === 0) return undefined;
+    return {
+      type: 'interactive',
+      body: value.body,
+      options: options as BotPreviewOption[],
+      listButtonLabel,
+    };
+  }
+  return {
+    type: 'interactive',
+    body: value.body,
+    options: options as BotPreviewOption[],
+  };
 }
 
 function optionFromPayload(value: unknown): BotPreviewOption | undefined {

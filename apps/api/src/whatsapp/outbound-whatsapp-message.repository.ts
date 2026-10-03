@@ -33,7 +33,12 @@ export interface OutboundMessageReservation {
 
 export type OutboundMessageContent =
   | { readonly type: 'TEXT'; readonly body: string; readonly options: null }
-  | { readonly type: 'INTERACTIVE'; readonly body: string; readonly options: readonly OutboundWhatsAppReplyOption[] };
+  | {
+    readonly type: 'INTERACTIVE';
+    readonly body: string;
+    readonly options: readonly OutboundWhatsAppReplyOption[];
+    readonly listButtonLabel: string | null;
+  };
 
 export type ReserveOutboundMessageResult =
   | { readonly outcome: 'reserved'; readonly request: OutboundMessageReservation }

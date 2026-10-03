@@ -21,6 +21,8 @@ export interface OutboundWhatsAppInteractiveMessage {
   readonly credentialReference: ProviderCredentialReference;
   readonly body: string;
   readonly options: readonly OutboundWhatsAppReplyOption[];
+  /** Required only when four or more options render through a WhatsApp list. */
+  readonly listButtonLabel: string | null;
 }
 
 /** Safe normalized outcome; raw provider responses never leave an adapter. */

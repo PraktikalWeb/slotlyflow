@@ -376,7 +376,12 @@ export interface BotPreviewOption {
 
 export type BotPreviewMessage =
   | { readonly type: 'text'; readonly text: string }
-  | { readonly type: 'interactive'; readonly body: string; readonly options: readonly BotPreviewOption[] };
+  | {
+    readonly type: 'interactive';
+    readonly body: string;
+    readonly options: readonly BotPreviewOption[];
+    readonly listButtonLabel?: string;
+  };
 
 export interface BotPreviewRequest {
   readonly previewSessionId: string | null;

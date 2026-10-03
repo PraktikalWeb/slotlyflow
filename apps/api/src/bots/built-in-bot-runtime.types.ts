@@ -14,7 +14,13 @@ export interface BotReplyOption {
 
 export type StructuredBotOutput =
   | { readonly type: 'text'; readonly text: string }
-  | { readonly type: 'interactive'; readonly body: string; readonly options: readonly BotReplyOption[] };
+  | {
+    readonly type: 'interactive';
+    readonly body: string;
+    readonly options: readonly BotReplyOption[];
+    /** Present only when four or more options must render as a WhatsApp list. */
+    readonly listButtonLabel?: string;
+  };
 
 export type HandoverTestBotState =
   | 'INITIAL'
